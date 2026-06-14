@@ -81,16 +81,16 @@ async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep,
 }
 
 async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
-  let query = supabase.from('trabajos').select('*, mecanicos(nombre)').order('fecha', {ascending: false})
+  let query = supabase.from('trabajos').select('*, mecanicos(nombre)').order('created_ad', {ascending: false})
   if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
   // filtroFecha se aplica en JS porque Supabase no usa SQL date() igual
-  const {data} = await query
+  let {data} = await query
   if(filtroFecha) {
     const hoy = new Date()
     data = data.filter(t => {
       const fecha = new Date(t.fecha)
       if(filtroFecha === 'dia') return fecha.toDateString() === hoy.toDateString()
-      if(filtroFecha === 'semana') return fecha >= new Date(hoy - 7*24*60*60*1000)
+      if(filtroFecha === 'semana') return fecha >= new Date(hoy.getTime() - 7*24*60*60*1000)
       if(filtroFecha === 'mes') return fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear()
       return true
     })
@@ -103,7 +103,7 @@ async function reporteGanancias(tipo, mecanico_id = null) {
   const hoy = new Date()
   let fecha_texto = 'Todos'
   if(tipo === 'dia') fecha_texto = hoy.toLocaleDateString()
-  if(tipo === 'semana') fecha_texto = `${new Date(hoy - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
+  if(tipo === 'semana') fecha_texto = `${new Date(hoy.getTime() - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
   if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
 
   // Agrupar por mecánico
