@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control Taller MR</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+body {font-family: Arial; margin: 0; background: #1a1a1a; color: #fff}
+.container {max-width: 900px; margin: 20px auto; background: #2a2a2a; padding: 20px; border-radius: 8px}
+h2, h3 {text-align: center; color: #2196F3}
+input, select, button {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff}
+button {background: #2196F3; cursor: pointer; border: none}
+button:hover {background: #1976D2}
+table {width: 100%; border-collapse: collapse; margin-top: 15px}
+th {background: #2196F3; color: white; padding: 10px}
+td {padding: 8px; border: 1px solid #444}
+.oculto {display: none}
+.snack {position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; padding: 12px 20px; border-radius: 4px; display: none}
+.row {display: flex; gap: 10px; justify-content: center; flex-wrap: wrap}
+.col {display: flex; flex-direction: column; align-items: center; gap: 15px}
+</style>
+</head>
+<body>
+<div id="app" class="container"></div>
+<div id="snack" class="snack"></div>
+
+<script>
+const SUPABASE_URL = https://hzxhvvxjfedqvtlmogmj.supabase.co
+const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzMzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+let pageActual = 'login'
+let datosReporteActuales = []
+let tipoReporteActual = 'dia'
+let mecanicoNombreActual = 'Todos'
+let fechaTextoActual = ''
+
+function mostrarAviso(mensaje) {
+  const snack = document.getElementById('snack')
+  snack.innerText = mensaje
+  snack.style.display = 'block'
+  setTimeout(() => snack.style.display = 'none', 3000)
+}
+
+// ========== DB SUPABASE ==========
+async function crearTablasTaller() {
+  // Supabase ya tiene las tablas. Solo verificamos usuario admin
+  const {data} = await supabase.from('usuarios').select('*').eq('usuario', 'admin')
+  if(data.length === 0) {
+    await supabase.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
+  }
+}
+
+async function verificarUsuario(usuario, password) {
+  const {data} = await supabase.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
+  return data.length > 0
+}
+
+async function crearUsuario(usuario, password) {
+  const {error} = await supabase.from('usuarios').insert([{usuario, password}])
+  return!error
+}
+
+async function insertarMecanico(nombre, telefono, especialidad) {
+  await supabase.from('mecanicos').insert([{nombre, telefono, especialidad}])
+}
+
+async function obtenerMecanicos() {
+  const {data} = await supabase.from('mecanicos').select('*').order('nombre')
+  return data
+}
+
+async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
+  const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
+  await supabase.from('trabajos').insert([{
+    mecanico_id, orden_trabajo, repuestos_cambiados: repuestos,
+    costo_repuesto: costo_rep, costo_trabajo: costo_trab, total
+  }])
+}
+
+async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
+  let query = supabase.from('trabajos').select('*, mecanicos(nombre)').order('fecha', {ascending: false})
+  if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
+  // filtroFecha se aplica en JS porque Supabase no usa SQL date() igual
+  const {data} = await query
+  if(filtroFecha) {
+    const hoy = new Date()
+    data = data.filter(t => {
+      const fecha = new Date(t.fecha)
+      if(filtroFecha === 'dia') return fecha.toDateString() === hoy.toDateString()
+      if(filtroFecha === 'semana') return fecha >= new Date(hoy - 7*24*60*60*1000)
+      if(filtroFecha === 'mes') return fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear()
+      return true
+    })
+  }
+  return data
+}
+
+async function reporteGanancias(tipo, mecanico_id = null) {
+  const trabajos = await obtenerTrabajos(tipo, mecanico_id)
+  const hoy = new Date()
+  let fecha_texto = 'Todos'
+  if(tipo === 'dia') fecha_texto = hoy.toLocaleDateString()
+  if(tipo === 'semana') fecha_texto = `${new Date(hoy - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
+  if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
+
+  // Agrupar por mecánico
+  const agrupado = {}
+  trabajos.forEach(t => {
+    const nombre = t.mecanicos?.nombre || 'Sin asignar'
+    if(!agrupado[nombre]) agrupado[nombre] = {trabajos: 0, ganancia: 0}
+    agrupado[nombre].trabajos++
+    agrupado[nombre].ganancia += parseFloat(t.total || 0)
+  })
+
+  const resultado = Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia])
+  return [resultado, fecha_texto]
+}
+
+// ========== VISTAS ==========
+function mostrarLogin() {
+  pageActual = 'login'
+  document.getElementById('app').innerHTML = `
+    <div class="col">
+      <h2 style="font-size: 40px">Control Taller</h2>
+      <h3>Inicia sesión</h3>
+      <input id="usuario" placeholder="Usuario" style="width: 300px">
+      <input id="password" type="password" placeholder="Contraseña" style="width: 300px">
+      <div class="row">
+        <button onclick="iniciarSesion()" style="width: 145px">Entrar</button>
+        <button onclick="registrar()" style="width: 145px">Registrar</button>
+      </div>
+      <p id="mensajeLogin" style="color: red"></p>
+    </div>
+  `
+}
+
+async function iniciarSesion() {
+  const u = document.getElementById('usuario').value
+  const p = document.getElementById('password').value
+  if(await verificarUsuario(u, p)) mostrarApp()
+  else document.getElementById('mensajeLogin').innerText = '❌ Usuario o contraseña incorrectos'
+}
+
+async function registrar() {
+  const u = document.getElementById('usuario').value
+  const p = document.getElementById('password').value
+  const msg = document.getElementById('mensajeLogin')
+  if(!u ||!p) {msg.innerText = '⚠️ Completa usuario y contraseña'; msg.style.color = 'orange'; return}
+  if(await crearUsuario(u, p)) {msg.innerText = '✅ Usuario creado'; msg.style.color = 'green'}
+  else {msg.innerText = '❌ Ese usuario ya existe'; msg.style.color = 'red'}
+}
+
+function mostrarApp() {
+  pageActual = 'menu'
+  document.getElementById('app').innerHTML = `
+    <div class="col">
+      <h2 style="font-size: 35px">Control Taller MR</h2>
+      <p style="color: grey">¿Qué hacemos hoy?</p>
+      <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
+      <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
+      <button onclick="mostrarReportes()" style="width: 300px">📊 Reportes</button>
+      <button onclick="mostrarLogin()" style="width: 300px; background: red">Cerrar sesión</button>
+    </div>
+  `
+}
+
+async function cargarTablaMecanicos() {
+  const mecanicos = await obtenerMecanicos()
+  return mecanicos.map(m => `
+    <tr>
+      <td>${m.id}</td>
+      <td>${m.nombre}</td>
+      <td>${m.telefono || ''}</td>
+      <td>${m.especialidad || ''}</td>
+    </tr>
+  `).join('')
+}
+
+async function mostrarMecanicos() {
+  const mecanicos = await obtenerMecanicos()
+  document.getElementById('app').innerHTML = `
+    <div>
+      <h3>Gestión de Mecánicos</h3>
+      <input id="nombre" placeholder="Nombre del mecánico" style="width: 300px">
+      <input id="telefono" placeholder="Teléfono" style="width: 300px">
+      <input id="especialidad" placeholder="Especialidad" style="width: 300px">
+      <button onclick="guardarMecanico()">Guardar Mecánico</button>
+      <hr>
+      <h3>Mecánicos registrados</h3>
+      <table>
+        <tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Especialidad</th></tr>
+        <tbody id="tablaMecanicos"></tbody>
+      </table>
+      <button onclick="mostrarApp()">← Volver al menú</button>
+    </div>
+  `
+  document.getElementById('tablaMecanicos').innerHTML = await cargarTablaMecanicos()
+}
+
+async function guardarMecanico() {
+  const nombre = document.getElementById('nombre').value.trim()
+  if(!nombre) return mostrarAviso('El nombre es obligatorio')
+  await insertarMecanico(nombre, document.getElementById('telefono').value, document.getElementById('especialidad').value)
+  mostrarAviso(`Mecánico ${nombre} guardado ✅`)
+  document.getElementById('nombre').value = ''
+  document.getElementById('telefono').value = ''
+  document.getElementById('especialidad').value = ''
+  document.getElementById('tablaMecanicos').innerHTML = await cargarTablaMecanicos()
+}
+
+async function cargarTablaTrabajos() {
+  const trabajos = await obtenerTrabajos()
+  return trabajos.map(t => `
+    <tr>
+      <td>${t.fecha}</td>
+      <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
+      <td>${t.orden_trabajo}</td>
+      <td>${t.repuestos_cambiados || '-'}</td>
+      <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
+      <td>Bs ${parseFloat(t.costo_trabajo).toFixed(2)}</td>
+      <td><b>Bs ${parseFloat(t.total).toFixed(2)}</b></td>
+      <td>${t.estado}</td>
+    </tr>
+  `).join('')
+}
+
+async function mostrarTrabajos() {
+  const mecanicos = await obtenerMecanicos()
+  if(mecanicos.length === 0) {
+    document.getElementById('app').innerHTML = `
+      <div class="col"><h3>Primero registra al menos 1 mecánico</h3>
+      <button onclick="mostrarApp()">Volver</button></div>
+    `
+    return
+  }
+
+  document.getElementById('app').innerHTML = `
+    <div>
+      <h3>Nueva Orden de Trabajo</h3>
+      <select id="mecanico" style="width: 300px">
+        ${mecanicos.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
+      </select>
+      <input id="orden" placeholder="Orden de Trabajo N°" style="width: 300px">
+      <textarea id="repuestos" placeholder="Repuestos cambiados" style="width: 300px"></textarea>
+      <div class="row">
+        <input id="costo_rep" type="number" placeholder="Costo repuesto Bs" oninput="calcularTotal()" style="width: 145px">
+        <input id="costo_trab" type="number" placeholder="Costo trabajo Bs" oninput="calcularTotal()" style="width: 145px">
+      </div>
+      <p id="total" style="font-size: 18px; font-weight: bold; color: green">Total: Bs 0.00</p>
+      <button onclick="guardarTrabajo()">Guardar Orden</button>
+      <hr>
+      <h3>Historial de Órdenes</h3>
+      <table>
+        <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th></tr>
+        <tbody id="tablaTrabajos"></tbody>
+      </table>
+      <button onclick="mostrarApp()">← Volver al menú</button>
+    </div>
+  `
+  document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+}
+
+function calcularTotal() {
+  const rep = parseFloat(document.getElementById('costo_rep').value || 0)
+  const trab = parseFloat(document.getElementById('costo_trab').value || 0)
+  document.getElementById('total').innerText = `Total: Bs ${(rep + trab).toFixed(2)}`
+}
+
+async function guardarTrabajo() {
+  const mec = document.getElementById('mecanico').value
+  const orden = document.getElementById('orden').value.trim()
+  if(!mec ||!orden) return mostrarAviso('Selecciona mecánico y número de orden')
+
+  await insertarTrabajo(mec, orden, document.getElementById('repuestos').value,
+    document.getElementById('costo_rep').value, document.getElementById('costo_trab').value)
+
+  mostrarAviso(`Orden ${orden} guardada ✅`)
+  document.getElementById('orden').value = ''
+  document.getElementById('repuestos').value = ''
+  document.getElementById('costo_rep').value = ''
+  document.getElementById('costo_trab').value = ''
+  document.getElementById('total').innerText = 'Total: Bs 0.00'
+  document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+}
+
+async function cargarReporte(tipo) {
+  tipoReporteActual = tipo
+  const mecId = document.getElementById('filtroMec')?.value
+  mecanicoNombreActual = mecId === 'todos'? 'Todos' : mecanicosCache.find(m => m.id == mecId)?.nombre || 'Todos'
+
+  const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
+  datosReporteActuales = datos
+  fechaTextoActual = fechaTexto
+
+  document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`
+  const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0)
+  document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
+
+  const tbody = document.getElementById('tablaReporte')
+  tbody.innerHTML = datos.map(d => `
+    <tr><td>${d[0]}</td><td>${d[1]}</td><td>Bs ${d[2].toFixed(2)}</td></tr>
+  `).join('')
+}
+
+function generarPDF() {
+  const {jsPDF} = window.jspdf
+  const doc = new jsPDF()
+  const width = doc.internal.pageSize.getWidth()
+
+  doc.setFontSize(18)
+  doc.text('Reporte de Ganancias - Control Taller', 20, 20)
+  doc.setFontSize(12)
+  doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 30)
+  doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 37)
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44)
+
+  let y = 60
+  doc.setFontSize(12)
+  doc.text('Mecánico', 20, y)
+  doc.text('Trabajos', 100, y)
+  doc.text('Ganancia Total', 140, y)
+  doc.line(20, y+3, 190, y+3)
+  y += 10
+
+  doc.setFontSize(11)
+  let totalGeneral = 0
+  datosReporteActuales.forEach(d => {
+    doc.text(String(d[0]), 20, y)
+    doc.text(String(d[1]), 100, y)
+    doc.text(`Bs ${d[2].toFixed(2)}`, 140, y)
+    totalGeneral += d[2] || 0
+    y += 8
+    if(y > 270) {doc.addPage(); y = 20}
+  })
+
+  doc.line(20, y, 190, y)
+  y += 8
+  doc.setFontSize(14)
+  doc.text('TOTAL GENERAL:', 100, y)
+  doc.text(`Bs ${totalGeneral.toFixed(2)}`, 140, y)
+
+  doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
+}
+
+let mecanicosCache = []
+async function mostrarReportes() {
+  mecanicosCache = await obtenerMecanicos()
+  document.getElementById('app').innerHTML = `
+    <div>
+      <h3>Reportes de Ganancias</h3>
+      <p style="color: grey">Detalle de trabajos por período</p>
+      <select id="filtroMec" onchange="cargarReporte(tipoReporteActual)" style="width: 300px">
+        <option value="todos">Todos</option>
+        ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
+      </select>
+      <div class="row">
+        <button onclick="cargarReporte('dia')">Hoy</button>
+        <button onclick="cargarReporte('semana')">Semana</button>
+        <button onclick="cargarReporte('mes')">Mes</button>
+      </div>
+      <p id="fechaLabel">Período: </p>
+      <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: green">Total General: Bs 0.00</p>
+      <button onclick="generarPDF()">📄 Exportar PDF</button>
+      <hr>
+      <table>
+        <tr><th>Mecánico</th><th>Trabajos</th><th>Ganancia</th></tr>
+        <tbody id="tablaReporte"></tbody>
+      </table>
+      <button onclick="mostrarApp()">← Volver al menú</button>
+    </div>
+  `
+  cargarReporte('dia')
+}
+
+// ========== INICIO ==========
+crearTablasTaller().then(() => mostrarLogin())
+</script>
+</body>
+</html>
