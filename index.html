@@ -10,14 +10,14 @@
 body {font-family: Arial; margin: 0; background: #1a1a1a; color: #fff}
 .container {max-width: 900px; margin: 20px auto; background: #2a2a2a; padding: 20px; border-radius: 8px}
 h2, h3 {text-align: center; color: #2196F3}
-input, select, button {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff}
+input, select, button, textarea {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff; font-family: Arial}
 button {background: #2196F3; cursor: pointer; border: none}
 button:hover {background: #1976D2}
 table {width: 100%; border-collapse: collapse; margin-top: 15px}
 th {background: #2196F3; color: white; padding: 10px}
-td {padding: 8px; border: 1px solid #444}
+td {padding: 8px; border: 1px solid #444; text-align: center}
 .oculto {display: none}
-.snack {position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; padding: 12px 20px; border-radius: 4px; display: none}
+.snack {position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; padding: 12px 20px; border-radius: 4px; display: none; z-index: 999}
 .row {display: flex; gap: 10px; justify-content: center; flex-wrap: wrap}
 .col {display: flex; flex-direction: column; align-items: center; gap: 15px}
 </style>
@@ -28,14 +28,14 @@ td {padding: 8px; border: 1px solid #444}
 
 <script>
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlmogmj.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzMzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
-let pageActual = 'login'
 let datosReporteActuales = []
 let tipoReporteActual = 'dia'
 let mecanicoNombreActual = 'Todos'
 let fechaTextoActual = ''
+let mecanicosCache = []
 
 function mostrarAviso(mensaje) {
   const snack = document.getElementById('snack')
@@ -46,16 +46,26 @@ function mostrarAviso(mensaje) {
 
 // ========== DB SUPABASE ==========
 async function crearTablasTaller() {
-  // Supabase ya tiene las tablas. Solo verificamos usuario admin
-  const {data} = await supabase.from('usuarios').select('*').eq('usuario', 'admin')
-  if(data.length === 0) {
-    await supabase.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
+  try {
+    const {data, error} = await supabase.from('usuarios').select('*').eq('usuario', 'admin')
+    if(error) console.error(error)
+    if(!data || data.length === 0) {
+      await supabase.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
+    }
+  } catch(e) {
+    console.error('Error al crear usuario admin:', e)
   }
 }
 
 async function verificarUsuario(usuario, password) {
-  const {data} = await supabase.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
-  return data.length > 0
+  try {
+    const {data, error} = await supabase.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
+    if(error) {console.error(error); return false}
+    return data && data.length > 0
+  } catch(e) {
+    console.error(e)
+    return false
+  }
 }
 
 async function crearUsuario(usuario, password) {
@@ -68,27 +78,38 @@ async function insertarMecanico(nombre, telefono, especialidad) {
 }
 
 async function obtenerMecanicos() {
-  const {data} = await supabase.from('mecanicos').select('*').order('nombre')
-  return data
+  const {data, error} = await supabase.from('mecanicos').select('*').order('nombre')
+  if(error) {console.error(error); return []}
+  return data || []
 }
 
 async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
   const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
   await supabase.from('trabajos').insert([{
-    mecanico_id, orden_trabajo, repuestos_cambiados: repuestos,
-    costo_repuesto: costo_rep, costo_trabajo: costo_trab, total
+    mecanico_id,
+    orden_trabajo,
+    repuestos_cambiados: repuestos,
+    costo_repuesto: parseFloat(costo_rep || 0),
+    costo_trabajo: parseFloat(costo_trab || 0),
+    total,
+    estado: 'pendiente'
   }])
 }
 
 async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
-  let query = supabase.from('trabajos').select('*, mecanicos(nombre)').order('created_ad', {ascending: false})
+  // CORREGIDO: created_at en vez de created_ad
+  let query = supabase.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
   if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
-  // filtroFecha se aplica en JS porque Supabase no usa SQL date() igual
-  let {data} = await query
+
+  let {data, error} = await query
+  if(error) {console.error(error); return []}
+  if(!data) return []
+
   if(filtroFecha) {
     const hoy = new Date()
     data = data.filter(t => {
-      const fecha = new Date(t.fecha)
+      // CORREGIDO: usar created_at en vez de fecha
+      const fecha = new Date(t.created_at)
       if(filtroFecha === 'dia') return fecha.toDateString() === hoy.toDateString()
       if(filtroFecha === 'semana') return fecha >= new Date(hoy.getTime() - 7*24*60*60*1000)
       if(filtroFecha === 'mes') return fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear()
@@ -106,7 +127,6 @@ async function reporteGanancias(tipo, mecanico_id = null) {
   if(tipo === 'semana') fecha_texto = `${new Date(hoy.getTime() - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
   if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
 
-  // Agrupar por mecánico
   const agrupado = {}
   trabajos.forEach(t => {
     const nombre = t.mecanicos?.nombre || 'Sin asignar'
@@ -121,7 +141,6 @@ async function reporteGanancias(tipo, mecanico_id = null) {
 
 // ========== VISTAS ==========
 function mostrarLogin() {
-  pageActual = 'login'
   document.getElementById('app').innerHTML = `
     <div class="col">
       <h2 style="font-size: 40px">Control Taller</h2>
@@ -138,15 +157,15 @@ function mostrarLogin() {
 }
 
 async function iniciarSesion() {
-  const u = document.getElementById('usuario').value
-  const p = document.getElementById('password').value
+  const u = document.getElementById('usuario').value.trim()
+  const p = document.getElementById('password').value.trim()
   if(await verificarUsuario(u, p)) mostrarApp()
   else document.getElementById('mensajeLogin').innerText = '❌ Usuario o contraseña incorrectos'
 }
 
 async function registrar() {
-  const u = document.getElementById('usuario').value
-  const p = document.getElementById('password').value
+  const u = document.getElementById('usuario').value.trim()
+  const p = document.getElementById('password').value.trim()
   const msg = document.getElementById('mensajeLogin')
   if(!u ||!p) {msg.innerText = '⚠️ Completa usuario y contraseña'; msg.style.color = 'orange'; return}
   if(await crearUsuario(u, p)) {msg.innerText = '✅ Usuario creado'; msg.style.color = 'green'}
@@ -154,7 +173,6 @@ async function registrar() {
 }
 
 function mostrarApp() {
-  pageActual = 'menu'
   document.getElementById('app').innerHTML = `
     <div class="col">
       <h2 style="font-size: 35px">Control Taller MR</h2>
@@ -162,7 +180,7 @@ function mostrarApp() {
       <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
       <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
       <button onclick="mostrarReportes()" style="width: 300px">📊 Reportes</button>
-      <button onclick="mostrarLogin()" style="width: 300px; background: red">Cerrar sesión</button>
+      <button onclick="mostrarLogin()" style="width: 300px; background: #d32f2f">Cerrar sesión</button>
     </div>
   `
 }
@@ -173,14 +191,13 @@ async function cargarTablaMecanicos() {
     <tr>
       <td>${m.id}</td>
       <td>${m.nombre}</td>
-      <td>${m.telefono || ''}</td>
-      <td>${m.especialidad || ''}</td>
+      <td>${m.telefono || '-'}</td>
+      <td>${m.especialidad || '-'}</td>
     </tr>
   `).join('')
 }
 
 async function mostrarMecanicos() {
-  const mecanicos = await obtenerMecanicos()
   document.getElementById('app').innerHTML = `
     <div>
       <h3>Gestión de Mecánicos</h3>
@@ -215,21 +232,21 @@ async function cargarTablaTrabajos() {
   const trabajos = await obtenerTrabajos()
   return trabajos.map(t => `
     <tr>
-      <td>${t.fecha}</td>
+      <td>${t.created_at? new Date(t.created_at).toLocaleDateString() : '-'}</td>
       <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
       <td>${t.orden_trabajo}</td>
       <td>${t.repuestos_cambiados || '-'}</td>
       <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
-      <td>Bs ${parseFloat(t.costo_trabajo).toFixed(2)}</td>
-      <td><b>Bs ${parseFloat(t.total).toFixed(2)}</b></td>
-      <td>${t.estado}</td>
+      <td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td>
+      <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
+      <td>${t.estado || 'pendiente'}</td>
     </tr>
   `).join('')
 }
 
 async function mostrarTrabajos() {
-  const mecanicos = await obtenerMecanicos()
-  if(mecanicos.length === 0) {
+  mecanicosCache = await obtenerMecanicos()
+  if(mecanicosCache.length === 0) {
     document.getElementById('app').innerHTML = `
       <div class="col"><h3>Primero registra al menos 1 mecánico</h3>
       <button onclick="mostrarApp()">Volver</button></div>
@@ -241,15 +258,15 @@ async function mostrarTrabajos() {
     <div>
       <h3>Nueva Orden de Trabajo</h3>
       <select id="mecanico" style="width: 300px">
-        ${mecanicos.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
+        ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
       <input id="orden" placeholder="Orden de Trabajo N°" style="width: 300px">
-      <textarea id="repuestos" placeholder="Repuestos cambiados" style="width: 300px"></textarea>
+      <textarea id="repuestos" placeholder="Repuestos cambiados" style="width: 300px; height: 60px"></textarea>
       <div class="row">
-        <input id="costo_rep" type="number" placeholder="Costo repuesto Bs" oninput="calcularTotal()" style="width: 145px">
-        <input id="costo_trab" type="number" placeholder="Costo trabajo Bs" oninput="calcularTotal()" style="width: 145px">
+        <input id="costo_rep" type="number" step="0.01" placeholder="Costo repuesto Bs" oninput="calcularTotal()" style="width: 145px">
+        <input id="costo_trab" type="number" step="0.01" placeholder="Costo trabajo Bs" oninput="calcularTotal()" style="width: 145px">
       </div>
-      <p id="total" style="font-size: 18px; font-weight: bold; color: green">Total: Bs 0.00</p>
+      <p id="total" style="font-size: 18px; font-weight: bold; color: #4caf50">Total: Bs 0.00</p>
       <button onclick="guardarTrabajo()">Guardar Orden</button>
       <hr>
       <h3>Historial de Órdenes</h3>
@@ -288,8 +305,10 @@ async function guardarTrabajo() {
 
 async function cargarReporte(tipo) {
   tipoReporteActual = tipo
-  const mecId = document.getElementById('filtroMec')?.value
-  mecanicoNombreActual = mecId === 'todos'? 'Todos' : mecanicosCache.find(m => m.id == mecId)?.nombre || 'Todos'
+  const select = document.getElementById('filtroMec')
+  const mecId = select?.value
+  // CORREGIDO: leer nombre directo del select, no de mecanicosCache
+  mecanicoNombreActual = mecId === 'todos'? 'Todos' : select.options[select.selectedIndex].text
 
   const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
   datosReporteActuales = datos
@@ -300,15 +319,14 @@ async function cargarReporte(tipo) {
   document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
 
   const tbody = document.getElementById('tablaReporte')
-  tbody.innerHTML = datos.map(d => `
+  tbody.innerHTML = datos.length > 0? datos.map(d => `
     <tr><td>${d[0]}</td><td>${d[1]}</td><td>Bs ${d[2].toFixed(2)}</td></tr>
-  `).join('')
+  `).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
 }
 
 function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
-  const width = doc.internal.pageSize.getWidth()
 
   doc.setFontSize(18)
   doc.text('Reporte de Ganancias - Control Taller', 20, 20)
@@ -345,7 +363,6 @@ function generarPDF() {
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
 }
 
-let mecanicosCache = []
 async function mostrarReportes() {
   mecanicosCache = await obtenerMecanicos()
   document.getElementById('app').innerHTML = `
@@ -362,7 +379,7 @@ async function mostrarReportes() {
         <button onclick="cargarReporte('mes')">Mes</button>
       </div>
       <p id="fechaLabel">Período: </p>
-      <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: green">Total General: Bs 0.00</p>
+      <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: #4caf50">Total General: Bs 0.00</p>
       <button onclick="generarPDF()">📄 Exportar PDF</button>
       <hr>
       <table>
@@ -372,11 +389,11 @@ async function mostrarReportes() {
       <button onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
-  cargarReporte('dia')
+  setTimeout(() => cargarReporte('dia'), 100)
 }
 
 // ========== INICIO ==========
-crearTablasTaller().then(() => mostrarLogin())
+crearTablasTaller().then(() => mostrarLogin()).catch(err => console.error(err))
 </script>
 </body>
 </html>
