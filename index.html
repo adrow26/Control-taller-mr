@@ -29,7 +29,7 @@ td {padding: 8px; border: 1px solid #444; text-align: center}
 <script>
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlmogmj.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 let datosReporteActuales = []
 let tipoReporteActual = 'dia'
@@ -47,10 +47,10 @@ function mostrarAviso(mensaje) {
 // ========== DB SUPABASE ==========
 async function crearTablasTaller() {
   try {
-    const {data, error} = await supabase.from('usuarios').select('*').eq('usuario', 'admin')
+    const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
     if(error) console.error(error)
     if(!data || data.length === 0) {
-      await supabase.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
+      await supabaseClient.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
     }
   } catch(e) {
     console.error('Error al crear usuario admin:', e)
@@ -59,7 +59,7 @@ async function crearTablasTaller() {
 
 async function verificarUsuario(usuario, password) {
   try {
-    const {data, error} = await supabase.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
+    const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
     if(error) {console.error(error); return false}
     return data && data.length > 0
   } catch(e) {
@@ -69,23 +69,23 @@ async function verificarUsuario(usuario, password) {
 }
 
 async function crearUsuario(usuario, password) {
-  const {error} = await supabase.from('usuarios').insert([{usuario, password}])
+  const {error} = await supabaseClient.from('usuarios').insert([{usuario, password}])
   return!error
 }
 
 async function insertarMecanico(nombre, telefono, especialidad) {
-  await supabase.from('mecanicos').insert([{nombre, telefono, especialidad}])
+  await supabaseClient.from('mecanicos').insert([{nombre, telefono, especialidad}])
 }
 
 async function obtenerMecanicos() {
-  const {data, error} = await supabase.from('mecanicos').select('*').order('nombre')
+  const {data, error} = await supabaseClient.from('mecanicos').select('*').order('nombre')
   if(error) {console.error(error); return []}
   return data || []
 }
 
 async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
   const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
-  await supabase.from('trabajos').insert([{
+  await supabaseClient.from('trabajos').insert([{
     mecanico_id,
     orden_trabajo,
     repuestos_cambiados: repuestos,
@@ -98,7 +98,7 @@ async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep,
 
 async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
   // CORREGIDO: created_at en vez de created_ad
-  let query = supabase.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
+  let query = supabaseClient.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
   if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
 
   let {data, error} = await query
