@@ -16,7 +16,6 @@ button:hover {background: #1976D2}
 table {width: 100%; border-collapse: collapse; margin-top: 15px}
 th {background: #2196F3; color: white; padding: 10px}
 td {padding: 8px; border: 1px solid #444; text-align: center}
-.oculto {display: none}
 .snack {position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; padding: 12px 20px; border-radius: 4px; display: none; z-index: 999}
 .row {display: flex; gap: 10px; justify-content: center; flex-wrap: wrap}
 .col {display: flex; flex-direction: column; align-items: center; gap: 15px}
@@ -44,7 +43,6 @@ function mostrarAviso(mensaje) {
   setTimeout(() => snack.style.display = 'none', 3000)
 }
 
-// ========== DB SUPABASE ==========
 async function crearTablasTaller() {
   try {
     const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
@@ -97,7 +95,6 @@ async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep,
 }
 
 async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
-  // CORREGIDO: created_at en vez de created_ad
   let query = supabaseClient.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
   if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
 
@@ -108,7 +105,6 @@ async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
   if(filtroFecha) {
     const hoy = new Date()
     data = data.filter(t => {
-      // CORREGIDO: usar created_at en vez de fecha
       const fecha = new Date(t.created_at)
       if(filtroFecha === 'dia') return fecha.toDateString() === hoy.toDateString()
       if(filtroFecha === 'semana') return fecha >= new Date(hoy.getTime() - 7*24*60*60*1000)
@@ -139,7 +135,6 @@ async function reporteGanancias(tipo, mecanico_id = null) {
   return [resultado, fecha_texto]
 }
 
-// ========== VISTAS ==========
 function mostrarLogin() {
   document.getElementById('app').innerHTML = `
     <div class="col">
@@ -307,7 +302,6 @@ async function cargarReporte(tipo) {
   tipoReporteActual = tipo
   const select = document.getElementById('filtroMec')
   const mecId = select?.value
-  // CORREGIDO: leer nombre directo del select, no de mecanicosCache
   mecanicoNombreActual = mecId === 'todos'? 'Todos' : select.options[select.selectedIndex].text
 
   const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
@@ -392,7 +386,6 @@ async function mostrarReportes() {
   setTimeout(() => cargarReporte('dia'), 100)
 }
 
-// ========== INICIO ==========
 crearTablasTaller().then(() => mostrarLogin()).catch(err => console.error(err))
 </script>
 </body>
