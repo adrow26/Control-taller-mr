@@ -357,27 +357,38 @@ function generarPDF() {
   let y = 60
   doc.setFontSize(12)
   doc.text('Mecánico', 20, y)
-  doc.text('Trabajos', 100, y)
-  doc.text('Ganancia Mano de Obra', 140, y)
+  doc.text('Orden/Detalle', 80, y)
+  doc.text('Ganancia', 150, y)
   doc.line(20, y+3, 190, y+3)
   y += 10
 
-  doc.setFontSize(11)
+  doc.setFontSize(10)
   let totalGeneral = 0
   datosReporteActuales.forEach(d => {
-    doc.text(String(d[0]), 20, y)
-    doc.text(String(d[1]), 100, y)
-    doc.text(`Bs ${d[2].toFixed(2)}`, 140, y)
-    totalGeneral += d[2] || 0
+    const nombre = d[0]
+    const trabajos = d[1]
+    const ganancia = d[2]
+
+    doc.text(nombre, 20, y)
+    doc.text(`Total: ${trabajos.length} trabajos`, 80, y)
+    doc.text(`Bs ${ganancia.toFixed(2)}`, 150, y)
     y += 8
-    if(y > 270) {doc.addPage(); y = 20}
+
+    trabajos.forEach(t => {
+      if(y > 270) {doc.addPage(); y = 20}
+      const texto = `- Ord ${t.orden}: ${t.repuestos || 'S/R'} Bs ${t.ganancia.toFixed(2)}`
+      doc.text(texto.substring(0, 55), 85, y)
+      y += 6
+    })
+    totalGeneral += ganancia
+    y += 4
   })
 
   doc.line(20, y, 190, y)
   y += 8
   doc.setFontSize(14)
   doc.text('TOTAL MANO DE OBRA:', 20, y)
-  doc.text(`Bs ${totalGeneral.toFixed(2)}`, 140, y)
+  doc.text(`Bs ${totalGeneral.toFixed(2)}`, 150, y)
 
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
 }
