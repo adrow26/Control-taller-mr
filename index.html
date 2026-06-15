@@ -128,7 +128,7 @@ async function reporteGanancias(tipo, mecanico_id = null) {
     const nombre = t.mecanicos?.nombre || 'Sin asignar'
     if(!agrupado[nombre]) agrupado[nombre] = {trabajos: 0, ganancia: 0}
     agrupado[nombre].trabajos++
-    agrupado[nombre].ganancia += parseFloat(t.total || 0)
+    agrupado[nombre].ganancia += parseFloat(t.costo_trabajo || 0)
   })
 
   const resultado = Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia])
@@ -333,7 +333,7 @@ function generarPDF() {
   doc.setFontSize(12)
   doc.text('Mecánico', 20, y)
   doc.text('Trabajos', 100, y)
-  doc.text('Ganancia Total', 140, y)
+  doc.text('Ganancia Mano de Obra', 140, y)
   doc.line(20, y+3, 190, y+3)
   y += 10
 
@@ -351,7 +351,7 @@ function generarPDF() {
   doc.line(20, y, 190, y)
   y += 8
   doc.setFontSize(14)
-  doc.text('TOTAL GENERAL:', 100, y)
+  doc.text('TOTAL MANO DE OBRA:', 100, y)
   doc.text(`Bs ${totalGeneral.toFixed(2)}`, 140, y)
 
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
@@ -373,7 +373,7 @@ async function mostrarReportes() {
         <button onclick="cargarReporte('mes')">Mes</button>
       </div>
       <p id="fechaLabel">Período: </p>
-      <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: #4caf50">Total General: Bs 0.00</p>
+      <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: #4caf50">Ganancia Mano de Obra: Bs 0.00</p>
       <button onclick="generarPDF()">📄 Exportar PDF</button>
       <hr>
       <table>
