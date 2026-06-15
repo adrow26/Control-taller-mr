@@ -27,7 +27,7 @@ td {padding: 8px; border: 1px solid #444; text-align: center}
 
 <script>
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlnogmj.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzMzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 let datosReporteActuales = []
@@ -126,12 +126,21 @@ async function reporteGanancias(tipo, mecanico_id = null) {
   const agrupado = {}
   trabajos.forEach(t => {
     const nombre = t.mecanicos?.nombre || 'Sin asignar'
-    if(!agrupado[nombre]) agrupado[nombre] = {trabajos: 0, ganancia: 0}
-    agrupado[nombre].trabajos++
+    if(!agrupado[nombre]) agrupado[nombre] = {trabajos: [], ganancia: 0}
+    agrupado[nombre].trabajos.push({
+      orden: t.orden_trabajo,
+      repuestos: t.repuestos_cambiados,
+      fecha: new Date(t.created_at).toLocaleDateString(),
+      ganancia: parseFloat(t.costo_trabajo || 0)
+    })
     agrupado[nombre].ganancia += parseFloat(t.costo_trabajo || 0)
   })
 
-  const resultado = Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia])
+  const resultado = Object.keys(agrupado).map(nombre => [
+    nombre,
+    agrupado[nombre].trabajos,
+    agrupado[nombre].ganancia
+  ])
   return [resultado, fecha_texto]
 }
 
@@ -313,9 +322,25 @@ async function cargarReporte(tipo) {
   document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
 
   const tbody = document.getElementById('tablaReporte')
-  tbody.innerHTML = datos.length > 0? datos.map(d => `
-    <tr><td>${d[0]}</td><td>${d[1]}</td><td>Bs ${d[2].toFixed(2)}</td></tr>
-  `).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
+  tbody.innerHTML = datos.length > 0? datos.map(d => {
+    const nombre = d[0]
+    const trabajos = d[1]
+    const ganancia = d[2]
+
+    const detalleTrabajos = trabajos.map(t =>
+      `<div style="text-align:left; font-size:12px">• Orden ${t.orden}: ${t.repuestos || 'Sin repuestos'} - Bs ${t.ganancia.toFixed(2)}</div>`
+    ).join('')
+
+    const fechas = [...new Set(trabajos.map(t => t.fecha))].join(', ')
+
+    return `
+      <tr>
+        <td>${nombre}</td>
+        <td>${trabajos.length}<br>${detalleTrabajos}</td>
+        <td>Bs ${ganancia.toFixed(2)}<br><span style="font-size:11px; color:grey">${fechas}</span></td>
+      </tr>
+    `
+  }).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
 }
 
 function generarPDF() {
@@ -351,7 +376,7 @@ function generarPDF() {
   doc.line(20, y, 190, y)
   y += 8
   doc.setFontSize(14)
-  doc.text('TOTAL MANO DE OBRA:', 100, y)
+  doc.text('TOTAL MANO DE OBRA:', 20, y)
   doc.text(`Bs ${totalGeneral.toFixed(2)}`, 140, y)
 
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
@@ -377,7 +402,7 @@ async function mostrarReportes() {
       <button onclick="generarPDF()">📄 Exportar PDF</button>
       <hr>
       <table>
-        <tr><th>Mecánico</th><th>Trabajos</th><th>Ganancia</th></tr>
+        <tr><th>Mecánico</th><th>Trabajos Detallados</th><th>Ganancia Mano de Obra + Fechas</th></tr>
         <tbody id="tablaReporte"></tbody>
       </table>
       <button onclick="mostrarApp()">← Volver al menú</button>
