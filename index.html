@@ -3,22 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Control Taller MR</title>
+<title>Control Taller RM</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔧</text></svg>">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 body {font-family: Arial; margin: 0; background: #1a1a1a; color: #fff}
-.container {max-width: 900px; margin: 20px auto; background: #2a2a2a; padding: 20px; border-radius: 8px}
+.container {max-width: 1000px; margin: 20px auto; background: #2a2a2a; padding: 20px; border-radius: 8px}
 h2, h3 {text-align: center; color: #2196F3}
 input, select, button, textarea {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff; font-family: Arial}
 button {background: #2196F3; cursor: pointer; border: none}
 button:hover {background: #1976D2}
-table {width: 100%; border-collapse: collapse; margin-top: 15px}
+.btn-pagado {background: #4caf50}
+.btn-pagado:hover {background: #388e3c}
+.btn-pendiente {background: #ff9800}
+.btn-pendiente:hover {background: #f57c00}
+table {width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px}
 th {background: #2196F3; color: white; padding: 10px}
 td {padding: 8px; border: 1px solid #444; text-align: center}
 .snack {position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; padding: 12px 20px; border-radius: 4px; display: none; z-index: 999}
 .row {display: flex; gap: 10px; justify-content: center; flex-wrap: wrap}
 .col {display: flex; flex-direction: column; align-items: center; gap: 15px}
+.estado-pagado {color: #4caf50; font-weight: bold}
+.estado-pendiente {color: #ff9800; font-weight: bold}
 </style>
 </head>
 <body>
@@ -28,7 +35,6 @@ td {padding: 8px; border: 1px solid #444; text-align: center}
 <script>
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlnogmj.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzMzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 let datosReporteActuales = []
 let tipoReporteActual = 'dia'
@@ -45,30 +51,21 @@ function mostrarAviso(mensaje) {
 
 async function crearTablasTaller() {
   try {
-    const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
-    if(error) console.error(error)
+    const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
     if(!data || data.length === 0) {
       await supabaseClient.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
     }
-  } catch(e) {
-    console.error('Error al crear usuario admin:', e)
-  }
+  } catch(e) {console.error(e)}
 }
 
 async function verificarUsuario(usuario, password) {
-  try {
-    const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
-    if(error) {console.error(error); return false}
-    return data && data.length > 0
-  } catch(e) {
-    console.error(e)
-    return false
-  }
+  const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
+  return data && data.length > 0
 }
 
 async function crearUsuario(usuario, password) {
   const {error} = await supabaseClient.from('usuarios').insert([{usuario, password}])
-  return!error
+  return!error // <- espacio agregado aquí
 }
 
 async function insertarMecanico(nombre, telefono, especialidad) {
@@ -76,8 +73,7 @@ async function insertarMecanico(nombre, telefono, especialidad) {
 }
 
 async function obtenerMecanicos() {
-  const {data, error} = await supabaseClient.from('mecanicos').select('*').order('nombre')
-  if(error) {console.error(error); return []}
+  const {data} = await supabaseClient.from('mecanicos').select('*').order('nombre')
   return data || []
 }
 
@@ -98,8 +94,7 @@ async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
   let query = supabaseClient.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
   if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
 
-  let {data, error} = await query
-  if(error) {console.error(error); return []}
+  let {data} = await query
   if(!data) return []
 
   if(filtroFecha) {
@@ -115,39 +110,48 @@ async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
   return data
 }
 
-async function reporteGanancias(tipo, mecanico_id = null) {
-  const trabajos = await obtenerTrabajos(tipo, mecanico_id)
-  const hoy = new Date()
-  let fecha_texto = 'Todos'
-  if(tipo === 'dia') fecha_texto = hoy.toLocaleDateString()
-  if(tipo === 'semana') fecha_texto = `${new Date(hoy.getTime() - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
-  if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
+async function cambiarEstadoTrabajo(id) { // <- ahora solo recibe id
+  const btn = event.target
+  const estadoActual = btn.dataset.estado || 'pendiente'
+  const nuevoEstado = estadoActual === 'pagado'? 'pendiente' : 'pagado'
 
-  const agrupado = {}
-  trabajos.forEach(t => {
-    const nombre = t.mecanicos?.nombre || 'Sin asignar'
-    if(!agrupado[nombre]) agrupado[nombre] = {trabajos: [], ganancia: 0}
-    agrupado[nombre].trabajos.push({
-      orden: t.orden_trabajo,
-      repuestos: t.repuestos_cambiados,
-      fecha: new Date(t.created_at).toLocaleDateString(),
-      ganancia: parseFloat(t.costo_trabajo || 0)
-    })
-    agrupado[nombre].ganancia += parseFloat(t.costo_trabajo || 0)
-  })
+  const {error} = await supabaseClient.from('trabajos').update({estado: nuevoEstado}).eq('id', id)
+  if(!error) {
+    mostrarAviso(`Orden marcada como ${nuevoEstado.toUpperCase()} ✅`)
+    document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+  } else {
+    mostrarAviso('Error al cambiar estado')
+    console.error(error)
+  }
+}
 
-  const resultado = Object.keys(agrupado).map(nombre => [
-    nombre,
-    agrupado[nombre].trabajos,
-    agrupado[nombre].ganancia
-  ])
-  return [resultado, fecha_texto]
+async function cargarTablaTrabajos() {
+  const trabajos = await obtenerTrabajos()
+  return trabajos.map(t => {
+    const estado = t.estado || 'pendiente'
+    const claseEstado = estado === 'pagado'? 'estado-pagado' : 'estado-pendiente'
+    const claseBoton = estado === 'pagado'? 'btn-pendiente' : 'btn-pagado'
+    const textoBoton = estado === 'pagado'? 'Marcar Pendiente' : 'Marcar Pagado'
+
+    return `
+    <tr>
+      <td>${t.created_at? new Date(t.created_at).toLocaleDateString() : '-'}</td>
+      <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
+      <td>${t.orden_trabajo}</td>
+      <td>${t.repuestos_cambiados || '-'}</td>
+      <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
+      <td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td>
+      <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
+      <td class="${claseEstado}">${estado.toUpperCase()}</td>
+      <td><button class="${claseBoton}" data-estado="${estado}" onclick="cambiarEstadoTrabajo(${t.id})">${textoBoton}</button></td>
+    </tr>
+  `}).join('')
 }
 
 function mostrarLogin() {
   document.getElementById('app').innerHTML = `
     <div class="col">
-      <h2 style="font-size: 40px">Control Taller</h2>
+      <h2 style="font-size: 40px">Control Taller RM</h2>
       <h3>Inicia sesión</h3>
       <input id="usuario" placeholder="Usuario" style="width: 300px">
       <input id="password" type="password" placeholder="Contraseña" style="width: 300px">
@@ -179,7 +183,7 @@ async function registrar() {
 function mostrarApp() {
   document.getElementById('app').innerHTML = `
     <div class="col">
-      <h2 style="font-size: 35px">Control Taller MR</h2>
+      <h2 style="font-size: 35px">Control Taller RM</h2>
       <p style="color: grey">¿Qué hacemos hoy?</p>
       <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
       <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
@@ -187,18 +191,6 @@ function mostrarApp() {
       <button onclick="mostrarLogin()" style="width: 300px; background: #d32f2f">Cerrar sesión</button>
     </div>
   `
-}
-
-async function cargarTablaMecanicos() {
-  const mecanicos = await obtenerMecanicos()
-  return mecanicos.map(m => `
-    <tr>
-      <td>${m.id}</td>
-      <td>${m.nombre}</td>
-      <td>${m.telefono || '-'}</td>
-      <td>${m.especialidad || '-'}</td>
-    </tr>
-  `).join('')
 }
 
 async function mostrarMecanicos() {
@@ -218,7 +210,10 @@ async function mostrarMecanicos() {
       <button onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
-  document.getElementById('tablaMecanicos').innerHTML = await cargarTablaMecanicos()
+  const mecanicos = await obtenerMecanicos()
+  document.getElementById('tablaMecanicos').innerHTML = mecanicos.map(m => `
+    <tr><td>${m.id}</td><td>${m.nombre}</td><td>${m.telefono || '-'}</td><td>${m.especialidad || '-'}</td></tr>
+  `).join('')
 }
 
 async function guardarMecanico() {
@@ -229,23 +224,7 @@ async function guardarMecanico() {
   document.getElementById('nombre').value = ''
   document.getElementById('telefono').value = ''
   document.getElementById('especialidad').value = ''
-  document.getElementById('tablaMecanicos').innerHTML = await cargarTablaMecanicos()
-}
-
-async function cargarTablaTrabajos() {
-  const trabajos = await obtenerTrabajos()
-  return trabajos.map(t => `
-    <tr>
-      <td>${t.created_at? new Date(t.created_at).toLocaleDateString() : '-'}</td>
-      <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
-      <td>${t.orden_trabajo}</td>
-      <td>${t.repuestos_cambiados || '-'}</td>
-      <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
-      <td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td>
-      <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
-      <td>${t.estado || 'pendiente'}</td>
-    </tr>
-  `).join('')
+  mostrarMecanicos()
 }
 
 async function mostrarTrabajos() {
@@ -275,7 +254,7 @@ async function mostrarTrabajos() {
       <hr>
       <h3>Historial de Órdenes</h3>
       <table>
-        <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th></tr>
+        <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
         <tbody id="tablaTrabajos"></tbody>
       </table>
       <button onclick="mostrarApp()">← Volver al menú</button>
@@ -307,48 +286,36 @@ async function guardarTrabajo() {
   document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
 }
 
-async function cargarReporte(tipo) {
-  tipoReporteActual = tipo
-  const select = document.getElementById('filtroMec')
-  const mecId = select?.value
-  mecanicoNombreActual = mecId === 'todos'? 'Todos' : select.options[select.selectedIndex].text
+async function reporteGanancias(tipo, mecanico_id = null) {
+  const trabajos = await obtenerTrabajos(tipo, mecanico_id)
+  const hoy = new Date()
+  let fecha_texto = 'Todos'
+  if(tipo === 'dia') fecha_texto = hoy.toLocaleDateString()
+  if(tipo === 'semana') fecha_texto = `${new Date(hoy.getTime() - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
+  if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
 
-  const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
-  datosReporteActuales = datos
-  fechaTextoActual = fechaTexto
+  const agrupado = {}
+  trabajos.forEach(t => {
+    const nombre = t.mecanicos?.nombre || 'Sin asignar'
+    if(!agrupado[nombre]) agrupado[nombre] = {trabajos: [], ganancia: 0}
+    agrupado[nombre].trabajos.push({
+      orden: t.orden_trabajo,
+      repuestos: t.repuestos_cambiados,
+      fecha: new Date(t.created_at).toLocaleDateString(),
+      ganancia: parseFloat(t.costo_trabajo || 0),
+      estado: t.estado
+    })
+    agrupado[nombre].ganancia += parseFloat(t.costo_trabajo || 0)
+  })
 
-  document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`
-  const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0)
-  document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
-
-  const tbody = document.getElementById('tablaReporte')
-  tbody.innerHTML = datos.length > 0? datos.map(d => {
-    const nombre = d[0]
-    const trabajos = d[1]
-    const ganancia = d[2]
-
-    const detalleTrabajos = trabajos.map(t =>
-      `<div style="text-align:left; font-size:12px">• Orden ${t.orden}: ${t.repuestos || 'Sin repuestos'} - Bs ${t.ganancia.toFixed(2)}</div>`
-    ).join('')
-
-    const fechas = [...new Set(trabajos.map(t => t.fecha))].join(', ')
-
-    return `
-      <tr>
-        <td>${nombre}</td>
-        <td>${trabajos.length}<br>${detalleTrabajos}</td>
-        <td>Bs ${ganancia.toFixed(2)}<br><span style="font-size:11px; color:grey">${fechas}</span></td>
-      </tr>
-    `
-  }).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
+  return [Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia]), fecha_texto]
 }
 
 function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
-
   doc.setFontSize(18)
-  doc.text('Reporte de Ganancias - Control Taller', 20, 20)
+  doc.text('Reporte de Ganancias - Control Taller RM', 20, 20)
   doc.setFontSize(12)
   doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 30)
   doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 37)
@@ -369,6 +336,7 @@ function generarPDF() {
     const trabajos = d[1]
     const ganancia = d[2]
 
+    if(y > 270) {doc.addPage(); y = 20}
     doc.text(nombre, 20, y)
     doc.text(`Total: ${trabajos.length} trabajos`, 80, y)
     doc.text(`Bs ${ganancia.toFixed(2)}`, 150, y)
@@ -376,7 +344,8 @@ function generarPDF() {
 
     trabajos.forEach(t => {
       if(y > 270) {doc.addPage(); y = 20}
-      const texto = `- Ord ${t.orden}: ${t.repuestos || 'S/R'} Bs ${t.ganancia.toFixed(2)}`
+      const estado = t.estado === 'pagado'? '[PAGADO]' : '[PENDIENTE]'
+      const texto = `- Ord ${t.orden} ${estado}: ${t.repuestos || 'S/R'} Bs ${t.ganancia.toFixed(2)}`
       doc.text(texto.substring(0, 55), 85, y)
       y += 6
     })
@@ -389,8 +358,35 @@ function generarPDF() {
   doc.setFontSize(14)
   doc.text('TOTAL MANO DE OBRA:', 20, y)
   doc.text(`Bs ${totalGeneral.toFixed(2)}`, 150, y)
-
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
+}
+
+async function cargarReporte(tipo) {
+  tipoReporteActual = tipo
+  const select = document.getElementById('filtroMec')
+  const mecId = select?.value
+  mecanicoNombreActual = mecId === 'todos'? 'Todos' : select.options[select.selectedIndex].text
+
+  const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
+  datosReporteActuales = datos
+  fechaTextoActual = fechaTexto
+
+  document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`
+  const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0)
+  document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
+
+  const tbody = document.getElementById('tablaReporte')
+  tbody.innerHTML = datos.length > 0? datos.map(d => {
+    const nombre = d[0]
+    const trabajos = d[1]
+    const ganancia = d[2]
+    const detalleTrabajos = trabajos.map(t => {
+      const estado = t.estado === 'pagado'? '🟢' : '🟠'
+      return `<div style="text-align:left; font-size:12px">${estado} Ord ${t.orden}: ${t.repuestos || 'Sin repuestos'} - Bs ${t.ganancia.toFixed(2)}</div>`
+    }).join('')
+    const fechas = [...new Set(trabajos.map(t => t.fecha))].join(', ')
+    return `<tr><td>${nombre}</td><td>${trabajos.length}<br>${detalleTrabajos}</td><td>Bs ${ganancia.toFixed(2)}<br><span style="font-size:11px; color:grey">${fechas}</span></td></tr>`
+  }).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
 }
 
 async function mostrarReportes() {
@@ -398,7 +394,7 @@ async function mostrarReportes() {
   document.getElementById('app').innerHTML = `
     <div>
       <h3>Reportes de Ganancias</h3>
-      <p style="color: grey">Detalle de trabajos por período</p>
+      <p style="color: grey">Detalle de trabajos por período - 🟢 Pagado / 🟠 Pendiente</p>
       <select id="filtroMec" onchange="cargarReporte(tipoReporteActual)" style="width: 300px">
         <option value="todos">Todos</option>
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
@@ -422,7 +418,7 @@ async function mostrarReportes() {
   setTimeout(() => cargarReporte('dia'), 100)
 }
 
-crearTablasTaller().then(() => mostrarLogin()).catch(err => console.error(err))
+crearTablasTaller().then(() => mostrarLogin())
 </script>
 </body>
 </html>
