@@ -329,12 +329,12 @@ async function generarPDF() {
   doc.setFontSize(12)
   doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 37)
   doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 41)
-  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 45)
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 46)
 
   let y = 65 // bajé el y para que no choque con el logo
   doc.setFontSize(12)
   doc.text('Mecánico', 20, y)
-  doc.text('Orden/Detalle', 50, y)
+  doc.text('Orden/Detalle', 55, y)
   doc.text('Ganancia', 160, y)
   doc.line(20, y+3, 190, y+3)
   y += 10
@@ -367,7 +367,7 @@ async function generarPDF() {
   y += 8
   doc.setFontSize(14)
   doc.text('TOTAL MANO DE OBRA:', 20, y)
-  doc.text(`Bs ${totalGeneral.toFixed(2)}`, 150, y)
+  doc.text(`Bs ${totalGeneral.toFixed(2)}`, 160, y)
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
 }
 
