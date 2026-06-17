@@ -152,7 +152,7 @@ async function cargarTablaTrabajos() {
 function mostrarLogin() {
   document.getElementById('app').innerHTML = `
     <div class="col">
-      <h2 style="font-size: 40px">Control Taller RM</h2>
+      <h2 style="font-size: 40px">Control Taller MORA</h2>
       <h3>Inicia sesión</h3>
       <input id="usuario" placeholder="Usuario" style="width: 300px">
       <input id="password" type="password" placeholder="Contraseña" style="width: 300px">
@@ -184,11 +184,11 @@ async function registrar() {
 function mostrarApp() {
   document.getElementById('app').innerHTML = `
     <div class="col">
-      <h2 style="font-size: 35px">Control Taller RM</h2>
+      <h2 style="font-size: 35px">Control Taller MORA</h2>
       <p style="color: grey">¿Qué hacemos hoy?</p>
-      <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
       <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
       <button onclick="mostrarReportes()" style="width: 300px">📊 Reportes</button>
+      <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
       <button onclick="mostrarLogin()" style="width: 300px; background: #d32f2f">Cerrar sesión</button>
     </div>
   `
@@ -324,7 +324,7 @@ async function generarPDF() {
   doc.setFont('helvetica', 'bold') // negrilla
   doc.setFontSize(20) // antes 16, ahora 20
   doc.text('TALLER DE MOTOS - MORA', 20, 20)
-  doc.setFontSize(8)
+  doc.setFontSize(6)
   doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES', 20, 24)
   doc.setFontSize(12)
   doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 37)
@@ -334,7 +334,7 @@ async function generarPDF() {
   let y = 65 // bajé el y para que no choque con el logo
   doc.setFontSize(12)
   doc.text('Mecánico', 20, y)
-  doc.text('Orden/Detalle', 40, y)
+  doc.text('Orden/Detalle', 50, y)
   doc.text('Ganancia', 160, y)
   doc.line(20, y+3, 190, y+3)
   y += 10
@@ -348,8 +348,8 @@ async function generarPDF() {
 
     if(y > 270) {doc.addPage(); y = 20}
     doc.text(nombre, 20, y)
-    doc.text(`Total: ${trabajos.length} trabajos`, 80, y)
-    doc.text(`Bs ${ganancia.toFixed(2)}`, 150, y)
+    doc.text(`Total: ${trabajos.length} trabajos`, 50, y)
+    doc.text(`Bs ${ganancia.toFixed(2)}`, 160, y)
     y += 8
 
     trabajos.forEach(t => {
