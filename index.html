@@ -321,20 +321,21 @@ async function generarPDF() {
   const logoBase64 = await urlToBase64(logoUrl)
   
   doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25) // arriba derecha
-  doc.setFontSize(16)
-  doc.text('TALLER DE MOTOS MORA', 20, 20)
-  doc.setFontSize(12)
-  doc.text('ADROW-CONSULTORES', 20, 27)
+  doc.setFont('helvetica', 'bold') // negrilla
+  doc.setFontSize(20) // antes 16, ahora 20
+  doc.text('TALLER DE MOTOS - MORA', 20, 20)
+  doc.setFontSize(8)
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES', 20, 24)
   doc.setFontSize(12)
   doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 37)
-  doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 44)
-  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 51)
+  doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 41)
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 45)
 
   let y = 65 // bajé el y para que no choque con el logo
   doc.setFontSize(12)
   doc.text('Mecánico', 20, y)
-  doc.text('Orden/Detalle', 80, y)
-  doc.text('Ganancia', 150, y)
+  doc.text('Orden/Detalle', 40, y)
+  doc.text('Ganancia', 160, y)
   doc.line(20, y+3, 190, y+3)
   y += 10
 
