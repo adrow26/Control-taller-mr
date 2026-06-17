@@ -359,7 +359,7 @@ async function generarPDF() {
       if(y > 270) {doc.addPage(); y = 20}
       const estado = t.estado === 'pagado'? '[PAGADO]' : '[PENDIENTE]'
       const texto = `- Ord ${t.orden} ${estado}: ${t.repuestos || 'S/R'} Bs ${t.ganancia.toFixed(2)}`
-      doc.text(texto.substring(0, 55), 85, y)
+      doc.text(texto.substring(0, 55), 55, y)
       y += 6
     })
     totalGeneral += ganancia
