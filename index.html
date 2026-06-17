@@ -335,10 +335,12 @@ async function generarPDF() {
   doc.setFontSize(12)
   doc.text('Mecánico', 20, y)
   doc.text('Orden/Detalle', 55, y)
+  doc.text('Repuestos', 85, y)
   doc.text('Ganancia', 160, y)
   doc.line(20, y+3, 190, y+3)
   y += 10
 
+  doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   let totalGeneral = 0
   datosReporteActuales.forEach(d => {
@@ -347,8 +349,9 @@ async function generarPDF() {
     const ganancia = d[2]
 
     if(y > 270) {doc.addPage(); y = 20}
+    doc.setFont('helvetica', 'bold')
     doc.text(nombre, 20, y)
-    doc.text(`Total: ${trabajos.length} trabajos`, 50, y)
+    doc.text(`Total: ${trabajos.length} trabajos`, 55, y)
     doc.text(`Bs ${ganancia.toFixed(2)}`, 160, y)
     y += 8
 
