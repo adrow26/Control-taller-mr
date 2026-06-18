@@ -316,39 +316,35 @@ async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
 
-  // Logo
+  // Logo + Header igual que antes
   const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png'
   const logoBase64 = await urlToBase64(logoUrl)
   doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25)
 
-  // Header
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(20)
   doc.text('TALLER DE MOTOS - MORA', 20, 20)
-
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES', 20, 26)
-
   doc.setFontSize(11)
   doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 34)
   doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 39)
   doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44)
 
-  // Config tabla con 5 columnas ahora
-  const colX = [20, 55, 115, 150, 170] // Mecánico | Orden | Repuestos | Monto | Ganancia
-  const colWidth = [35, 55, 35, 20, 25]
+  // Config tabla: aumenté ancho Orden a 60 para que no se corte
+  const colX = [20, 55, 115, 150, 170]
+  const colWidth = [35, 60, 35, 20, 25] // Orden antes 55, ahora 60
   let y = 58
-  const rowHeight = 7
 
-  // Header tabla con bordes
+  // Header con bordes
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.rect(20, y-5, 170, 12) // borde exterior header
+  doc.rect(20, y-5, 170, 12)
   doc.text('Mecánico', colX[0], y)
   doc.text('Orden/Detalle', colX[1], y)
   doc.text('Repuestos', colX[2], y)
-  doc.text('Monto', colX[3], y) // NUEVA COLUMNA
+  doc.text('Monto', colX[3], y)
   doc.text('Ganancia', colX[4], y)
   doc.line(colX[0], y+3, colX[4]+colWidth[4], y+3)
   y += 12
@@ -362,45 +358,49 @@ async function generarPDF() {
     const trabajos = d[1]
     const ganancia = d[2]
 
-    // Fila del mecánico con borde
     if(y > 270) {doc.addPage(); y = 20}
-    doc.rect(20, y-5, 170, rowHeight)
+    doc.rect(20, y-5, 170, 7)
     doc.setFont('helvetica', 'bold')
     doc.text(nombre, colX[0], y)
     doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y)
     doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y)
     doc.setFont('helvetica', 'normal')
-    y += rowHeight
+    y += 7
 
-    // Detalle de cada trabajo
     trabajos.forEach(t => {
       if(y > 270) {doc.addPage(); y = 20}
       const estado = t.estado === 'pagado'? '[PAGADO]' : '[PENDIENTE]'
 
-      // Dividir repuestos en múltiples líneas si son largos
+      // CORRECCIÓN 1: Orden/Detalle multilínea
+      const detalleText = `- Ord ${t.orden} ${estado}`
+      const detalleLines = doc.splitTextToSize(detalleText, colWidth[1]-2)
+
+      // CORRECCIÓN 2: Repuestos con espacio de la línea
       const repuestosText = t.repuestos || 'S/R'
       const repuestosLines = doc.splitTextToSize(repuestosText, colWidth[2]-2)
-      const linesCount = Math.max(repuestosLines.length, 1)
-      const currentRowHeight = linesCount * 6 + 2
 
-      // Borde de la fila
+      // Calcular alto de fila según el que tenga más líneas
+      const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1)
+      const currentRowHeight = linesCount * 6 + 4 // +4 para respiro
+
+      // Dibujar bordes de la fila
       doc.rect(20, y-5, 170, currentRowHeight)
-      doc.line(colX[0], y-5, colX[0], y-5+currentRowHeight) // línea vertical Mecánico
-      doc.line(colX[1], y-5, colX[1], y-5+currentRowHeight) // línea vertical Orden
-      doc.line(colX[2], y-5, colX[2], y-5+currentRowHeight) // línea vertical Repuestos
-      doc.line(colX[3], y-5, colX[3], y-5+currentRowHeight) // línea vertical Monto
+      doc.line(colX[0], y-5, colX[0], y-5+currentRowHeight)
+      doc.line(colX[1], y-5, colX[1], y-5+currentRowHeight)
+      doc.line(colX[2], y-5, colX[2], y-5+currentRowHeight)
+      doc.line(colX[3], y-5, colX[3], y-5+currentRowHeight)
 
-      // Contenido
-      doc.text(`- Ord ${t.orden} ${estado}`, colX[1], y)
-      doc.text(repuestosLines, colX[2], y) // repuestos multilínea
-      doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y) // NUEVA COLUMNA Monto
+      // Escribir contenido con espacio extra en Repuestos
+      doc.text(detalleLines, colX[1], y)
+      doc.text(repuestosLines, colX[2], y+2) // +2px hacia abajo para separar de la línea
+      doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y)
+
       y += currentRowHeight
     })
     totalGeneral += ganancia
     y += 3
   })
 
-  // Borde inferior + total
   doc.rect(20, y-5, 170, 12)
   doc.line(20, y+3, 190, y+3)
   y += 8
