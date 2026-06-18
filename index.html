@@ -398,8 +398,21 @@ async function generarPDF() {
       const detalleLines = doc.splitTextToSize(detalleText, colWidth[1]-2)
 
       // CORRECCIÓN 2: Repuestos con espacio de la línea
-      const repuestosText = t.repuestos || 'S/R'
-      const repuestosLines = doc.splitTextToSize(repuestosText, colWidth[2]-2)
+      const {items, total} = parseRepuestos(t.repuestos)
+
+      // Preparar líneas para tabla Repuestos
+      let repuestosLines = []
+      if (items.length === 0) {
+        repuestosLines = ['S/R']
+      } else {
+  items.forEach(item => {
+  repuestosLines.push(`${item.detalle} | Bs ${item.precio.toFixed(2)}`)
+  })
+  repuestosLines.push('---') // separador
+  repuestosLines.push(`TOTAL: Bs ${total.toFixed(2)}`)
+}
+
+const repuestosLinesFormateado = doc.splitTextToSize(repuestosLines.join('\n'), colWidth[2]-2)
 
       // Calcular alto de fila según el que tenga más líneas
       const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1)
