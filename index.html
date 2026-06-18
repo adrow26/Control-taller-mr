@@ -312,6 +312,28 @@ async function reporteGanancias(tipo, mecanico_id = null) {
   return [Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia]), fecha_texto]
 }
 
+function parseRepuestos(repuestosStr) {
+  if (!repuestosStr || repuestosStr === 'S/R') return {items: [], total: 0}
+
+  const items = []
+  const lineas = repuestosStr.split('\n')
+
+  lineas.forEach(linea => {
+    linea = linea.trim()
+    if (!linea) return
+
+    // Busca el último número de la línea como precio
+    const match = linea.match(/(.+?)\s+(\d+\.?\d*)$/)
+    if (match) {
+      items.push({detalle: match[1].trim(), precio: parseFloat(match[2])})
+    } else {
+      items.push({detalle: linea, precio: 0})
+    }
+  })
+
+  const total = items.reduce((sum, item) => sum + item.precio, 0)
+  return {items, total}
+  
 async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
