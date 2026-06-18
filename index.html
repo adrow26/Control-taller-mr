@@ -315,62 +315,100 @@ async function reporteGanancias(tipo, mecanico_id = null) {
 async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
-  
-  // Cargar logo desde Supabase Storage
+
+  // Logo
   const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png'
   const logoBase64 = await urlToBase64(logoUrl)
-  
-  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25) // arriba derecha
-  doc.setFont('helvetica', 'bold') // negrilla
-  doc.setFontSize(20) // antes 16, ahora 20
-  doc.text('TALLER DE MOTOS - MORA', 20, 20)
-  doc.setFontSize(6)
-  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES', 20, 24)
-  doc.setFontSize(12)
-  doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 37)
-  doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 41)
-  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 46)
+  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25)
 
-  let y = 65 // bajé el y para que no choque con el logo
-  doc.setFontSize(12)
-  doc.text('Mecánico', 20, y)
-  doc.text('Orden/Detalle', 55, y)
-  doc.text('Repuestos', 85, y)
-  doc.text('Ganancia', 160, y)
-  doc.line(20, y+3, 190, y+3)
-  y += 10
+  // Header
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(20)
+  doc.text('TALLER DE MOTOS - MORA', 20, 20)
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
+  doc.setFontSize(9)
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES', 20, 26)
+
+  doc.setFontSize(11)
+  doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 34)
+  doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 39)
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44)
+
+  // Config tabla con 5 columnas ahora
+  const colX = [20, 55, 115, 150, 170] // Mecánico | Orden | Repuestos | Monto | Ganancia
+  const colWidth = [35, 55, 35, 20, 25]
+  let y = 58
+  const rowHeight = 7
+
+  // Header tabla con bordes
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.rect(20, y-5, 170, 12) // borde exterior header
+  doc.text('Mecánico', colX[0], y)
+  doc.text('Orden/Detalle', colX[1], y)
+  doc.text('Repuestos', colX[2], y)
+  doc.text('Monto', colX[3], y) // NUEVA COLUMNA
+  doc.text('Ganancia', colX[4], y)
+  doc.line(colX[0], y+3, colX[4]+colWidth[4], y+3)
+  y += 12
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
   let totalGeneral = 0
+
   datosReporteActuales.forEach(d => {
     const nombre = d[0]
     const trabajos = d[1]
     const ganancia = d[2]
 
+    // Fila del mecánico con borde
     if(y > 270) {doc.addPage(); y = 20}
+    doc.rect(20, y-5, 170, rowHeight)
     doc.setFont('helvetica', 'bold')
-    doc.text(nombre, 20, y)
-    doc.text(`Total: ${trabajos.length} trabajos`, 55, y)
-    doc.text(`Bs ${ganancia.toFixed(2)}`, 160, y)
-    y += 8
+    doc.text(nombre, colX[0], y)
+    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y)
+    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y)
+    doc.setFont('helvetica', 'normal')
+    y += rowHeight
 
+    // Detalle de cada trabajo
     trabajos.forEach(t => {
       if(y > 270) {doc.addPage(); y = 20}
       const estado = t.estado === 'pagado'? '[PAGADO]' : '[PENDIENTE]'
-      const texto = `- Ord ${t.orden} ${estado}: ${t.repuestos || 'S/R'} Bs ${t.ganancia.toFixed(2)}`
-      doc.text(texto.substring(0, 55), 55, y)
-      y += 6
+
+      // Dividir repuestos en múltiples líneas si son largos
+      const repuestosText = t.repuestos || 'S/R'
+      const repuestosLines = doc.splitTextToSize(repuestosText, colWidth[2]-2)
+      const linesCount = Math.max(repuestosLines.length, 1)
+      const currentRowHeight = linesCount * 6 + 2
+
+      // Borde de la fila
+      doc.rect(20, y-5, 170, currentRowHeight)
+      doc.line(colX[0], y-5, colX[0], y-5+currentRowHeight) // línea vertical Mecánico
+      doc.line(colX[1], y-5, colX[1], y-5+currentRowHeight) // línea vertical Orden
+      doc.line(colX[2], y-5, colX[2], y-5+currentRowHeight) // línea vertical Repuestos
+      doc.line(colX[3], y-5, colX[3], y-5+currentRowHeight) // línea vertical Monto
+
+      // Contenido
+      doc.text(`- Ord ${t.orden} ${estado}`, colX[1], y)
+      doc.text(repuestosLines, colX[2], y) // repuestos multilínea
+      doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y) // NUEVA COLUMNA Monto
+      y += currentRowHeight
     })
     totalGeneral += ganancia
-    y += 4
+    y += 3
   })
 
-  doc.line(20, y, 190, y)
+  // Borde inferior + total
+  doc.rect(20, y-5, 170, 12)
+  doc.line(20, y+3, 190, y+3)
   y += 8
   doc.setFontSize(14)
-  doc.text('TOTAL MANO DE OBRA:', 20, y)
-  doc.text(`Bs ${totalGeneral.toFixed(2)}`, 160, y)
+  doc.setFont('helvetica', 'bold')
+  doc.text('TOTAL MANO DE OBRA:', colX[0], y)
+  doc.text(`Bs ${totalGeneral.toFixed(2)}`, colX[4], y)
+
   doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
 }
 
