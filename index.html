@@ -333,7 +333,8 @@ function parseRepuestos(repuestosStr) {
 
   const total = items.reduce((sum, item) => sum + item.precio, 0)
   return {items, total}
-  
+}
+
 async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
