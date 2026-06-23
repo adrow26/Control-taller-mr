@@ -10,7 +10,8 @@
 <style>
 body {font-family: Arial; margin: 0; background: #1a1a1a; color: #fff}
 .container {max-width: 1000px; margin: 20px auto; background: #2a2a2a; padding: 20px; border-radius: 8px}
-h2, h3 {text-align: center; color: #2196F3}
+h2, h3 {text-align: center; color: #2196F3; margin-bottom: 5px;}
+.autor-tag {text-align: center; color: #aaa; font-size: 12px; margin-top: 0; margin-bottom: 15px; font-style: italic;}
 input, select, button, textarea {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff; font-family: Arial; box-sizing: border-box}
 button {background: #2196F3; cursor: pointer; border: none}
 button:hover {background: #1976D2}
@@ -164,7 +165,6 @@ async function cargarTablaTrabajos() {
     const claseBoton = estado === 'pagado'? 'btn-pendiente' : 'btn-pagado'
     const textoBoton = estado === 'pagado'? 'Marcar Pendiente' : 'Marcar Pagado'
     
-    // Solo mostrar el botón editar si está PENDIENTE
     const botonEditar = estado === 'pendiente' ? 
       `<button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id})">Editar</button>` : '';
 
@@ -195,16 +195,12 @@ function escapeJsonStr(str) {
 
 function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoId) {
   idTrabajoEdicion = id;
-  
-  // Mover vista hacia arriba para comodidad
   window.scrollTo({top: 0, behavior: 'smooth'});
   
-  // Rellenar campos básicos
   document.getElementById('mecanico').value = mecanicoId;
   document.getElementById('orden').value = orden;
   document.getElementById('costo_trab').value = costoTrabajo;
   
-  // Reestructurar sección de repuestos vaciándola primero
   const contenedor = document.getElementById('contenedorRepuestos');
   contenedor.innerHTML = '';
   
@@ -219,13 +215,11 @@ function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoI
   
   calcularTotalRepuestos();
   
-  // Cambiar título de formulario y acción de botón principal
   document.getElementById('tituloFormulario').innerText = `Editar Orden de Trabajo (ID: ${id})`;
   const btnGuardar = document.getElementById('btnGuardarOrden');
   btnGuardar.innerText = 'Actualizar Orden';
   btnGuardar.style.background = '#ff9800';
   
-  // Mostrar botón para cancelar
   document.getElementById('btnCancelarEdicion').style.display = 'inline-block';
 }
 
@@ -237,7 +231,6 @@ function cancelarEdicion() {
   btnGuardar.style.background = '#2196F3';
   document.getElementById('btnCancelarEdicion').style.display = 'none';
   
-  // Limpiar campos
   document.getElementById('orden').value = '';
   document.getElementById('costo_trab').value = '';
   document.getElementById('contenedorRepuestos').innerHTML = '';
@@ -248,13 +241,13 @@ function cancelarEdicion() {
 function mostrarLogin() {
   document.getElementById('app').innerHTML = `
     <div class="col">
-      <h2 style="font-size: 40px">Control Taller MORA</h2>
+      <h2 style="font-size: 40px; margin-bottom: 0;">Control Taller MORA</h2>
+      <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3>Inicia sesión</h3>
       <input id="usuario" placeholder="Usuario" style="width: 300px">
       <input id="password" type="password" placeholder="Contraseña" style="width: 300px">
       <div class="row">
-        <button onclick="iniciarSesion()" style="width: 145px">Entrar</button>
-        <button onclick="registrar()" style="width: 145px">Registrar</button>
+        <button onclick="iniciarSesion()" style="width: 300px">Entrar</button>
       </div>
       <p id="mensajeLogin" style="color: red"></p>
     </div>
@@ -272,20 +265,12 @@ async function iniciarSesion() {
   }
 }
 
-async function registrar() {
-  const u = document.getElementById('usuario').value.trim()
-  const p = document.getElementById('password').value.trim()
-  const msg = document.getElementById('mensajeLogin')
-  if(!u ||!p) {msg.innerText = '⚠️ Completa usuario y contraseña'; msg.style.color = 'orange'; return}
-  if(await crearUsuario(u, p)) {msg.innerText = '✅ Usuario creado'; msg.style.color = 'green'}
-  else {msg.innerText = '❌ Ese usuario ya existe'; msg.style.color = 'red'}
-}
-
 function mostrarApp() {
   const esAdmin = usuarioLogueado === 'admin';
   document.getElementById('app').innerHTML = `
     <div class="col">
-      <h2 style="font-size: 35px">Control Taller MORA</h2>
+      <h2 style="font-size: 35px; margin-bottom: 0;">Control Taller MORA</h2>
+      <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <p style="color: grey">¿Qué hacemos hoy?</p>
       <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
       <button onclick="mostrarReportes()" style="width: 300px">📊 Reportes</button>
@@ -299,6 +284,8 @@ function mostrarApp() {
 function mostrarRegistroAdmin() {
   document.getElementById('app').innerHTML = `
     <div class="col">
+      <h2 style="font-size: 30px; margin-bottom: 0;">Control Taller MORA</h2>
+      <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3>Registrar Nuevo Usuario</h3>
       <input id="new_usuario" placeholder="Nuevo Usuario" style="width: 300px">
       <input id="new_password" type="password" placeholder="Contraseña" style="width: 300px">
@@ -326,6 +313,8 @@ async function ejecutarRegistroAdmin() {
 async function mostrarMecanicos() {
   document.getElementById('app').innerHTML = `
     <div>
+      <h2 style="font-size: 30px; margin-bottom: 0;">Control Taller MORA</h2>
+      <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3>Gestión de Mecánicos</h3>
       <input id="nombre" placeholder="Nombre del mecánico" style="width: 300px">
       <input id="telefono" placeholder="Teléfono" style="width: 300px">
@@ -361,16 +350,22 @@ async function mostrarTrabajos() {
   mecanicosCache = await obtenerMecanicos()
   if(mecanicosCache.length === 0) {
     document.getElementById('app').innerHTML = `
-      <div class="col"><h3>Primero registra al menos 1 mecánico</h3>
-      <button onclick="mostrarApp()">Volver</button></div>
+      <div class="col">
+        <h2>Control Taller MORA</h2>
+        <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
+        <h3>Primero registra al menos 1 mecánico</h3>
+        <button onclick="mostrarApp()">Volver</button>
+      </div>
     `
     return
   }
 
-  idTrabajoEdicion = null; // resetear estado de edicion
+  idTrabajoEdicion = null;
 
   document.getElementById('app').innerHTML = `
     <div>
+      <h2 style="font-size: 30px; margin-bottom: 0;">Control Taller MORA</h2>
+      <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3 id="tituloFormulario">Nueva Orden de Trabajo</h3>
       <select id="mecanico" style="width: 300px; display: block; margin: 5px auto;">
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
@@ -470,7 +465,6 @@ async function guardarTrabajo() {
   const orden = document.getElementById('orden').value.trim()
   const costoTrabRaw = document.getElementById('costo_trab').value.trim()
 
-  // NUEVA VALIDACIÓN: Revisar si el Costo de Trabajo está vacío o ausente
   if(!costoTrabRaw || parseFloat(costoTrabRaw) <= 0) {
     alert('⚠️ Espacio Obligatorio: Debe llenar el costo del trabajo (Mano de Obra).')
     mostrarAviso('Llene el costo del trabajo')
@@ -483,7 +477,6 @@ async function guardarTrabajo() {
   const costoRep = document.getElementById('costo_rep').value;
 
   if (idTrabajoEdicion) {
-    // Modo Edición: Actualizar registro existente
     const exito = await actualizarTrabajoExistente(idTrabajoEdicion, mec, orden, repuestosString, costoRep, costoTrabRaw);
     if(exito) {
       mostrarAviso(`Orden ${orden} actualizada con éxito ✅`);
@@ -492,7 +485,6 @@ async function guardarTrabajo() {
       mostrarAviso('Error al actualizar la orden ❌');
     }
   } else {
-    // Modo Normal: Insertar nueva orden
     await insertarTrabajo(mec, orden, repuestosString, costoRep, costoTrabRaw);
     mostrarAviso(`Orden ${orden} guardada ✅`);
     mostrarTrabajos();
@@ -559,7 +551,7 @@ async function generarPDF() {
   doc.text('TALLER DE MOTOS - MORA', 20, 20)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
-  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES', 20, 26)
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26)
   doc.setFontSize(11)
   doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 34)
   doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 39)
@@ -617,8 +609,6 @@ async function generarPDF() {
         repuestosLines.push('---')
         repuestosLines.push(`TOTAL: Bs ${total.toFixed(2)}`)
       }
-
-      const repuestosLinesFormateado = doc.splitTextToSize(repuestosLines.join('\n'), colWidth[2]-2)
 
       const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1)
       const currentRowHeight = linesCount * 6 + 4
@@ -700,6 +690,8 @@ async function mostrarReportes() {
   mecanicosCache = await obtenerMecanicos()
   document.getElementById('app').innerHTML = `
     <div>
+      <h2 style="font-size: 30px; margin-bottom: 0;">Control Taller MORA</h2>
+      <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3>Reportes de Ganancias</h3>
       <p style="color: grey">Detalle de trabajos por período - 🟢 Pagado / 🟠 Pendiente</p>
       <select id="filtroMec" onchange="cargarReporte(tipoReporteActual)" style="width: 300px">
