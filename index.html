@@ -11,7 +11,7 @@
 body {font-family: Arial; margin: 0; background: #1a1a1a; color: #fff}
 .container {max-width: 1000px; margin: 20px auto; background: #2a2a2a; padding: 20px; border-radius: 8px}
 h2, h3 {text-align: center; color: #2196F3}
-input, select, button, textarea {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff; font-family: Arial}
+input, select, button, textarea {padding: 10px; margin: 5px; border-radius: 4px; border: 1px solid #555; background: #333; color: #fff; font-family: Arial; box-sizing: border-box}
 button {background: #2196F3; cursor: pointer; border: none}
 button:hover {background: #1976D2}
 .btn-pagado {background: #4caf50}
@@ -26,6 +26,8 @@ td {padding: 8px; border: 1px solid #444; text-align: center}
 .col {display: flex; flex-direction: column; align-items: center; gap: 15px}
 .estado-pagado {color: #4caf50; font-weight: bold}
 .estado-pendiente {color: #ff9800; font-weight: bold}
+.repuestos-grid {display: grid; grid-template-columns: 2fr 1fr; gap: 5px; width: 300px; max-height: 120px; overflow-y: auto; background: #222; padding: 5px; border-radius: 4px; border: 1px solid #555;}
+.repuestos-lista-historial {text-align: left; margin: 0; padding-left: 20px; font-size: 12px;}
 </style>
 </head>
 <body>
@@ -42,6 +44,7 @@ let tipoReporteActual = 'dia'
 let mecanicoNombreActual = 'Todos'
 let fechaTextoActual = ''
 let mecanicosCache = []
+let usuarioLogueado = ''
 
 function mostrarAviso(mensaje) {
   const snack = document.getElementById('snack')
@@ -66,7 +69,7 @@ async function verificarUsuario(usuario, password) {
 
 async function crearUsuario(usuario, password) {
   const {error} = await supabaseClient.from('usuarios').insert([{usuario, password}])
-  return!error // <- espacio agregado aquí
+  return !error
 }
 
 async function insertarMecanico(nombre, telefono, especialidad) {
@@ -111,7 +114,7 @@ async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
   return data
 }
 
-async function cambiarEstadoTrabajo(id) { // <- ahora solo recibe id
+async function cambiarEstadoTrabajo(id) {
   const btn = event.target
   const estadoActual = btn.dataset.estado || 'pendiente'
   const nuevoEstado = estadoActual === 'pagado'? 'pendiente' : 'pagado'
@@ -124,6 +127,16 @@ async function cambiarEstadoTrabajo(id) { // <- ahora solo recibe id
     mostrarAviso('Error al cambiar estado')
     console.error(error)
   }
+}
+
+function formatearRepuestosHistorial(repuestosStr) {
+  if (!repuestosStr || repuestosStr === '-' || repuestosStr === 'S/R') return '-';
+  const { items } = parseRepuestos(repuestosStr);
+  if (items.length === 0) return '-';
+  
+  return `<ol class="repuestos-lista-historial">
+    ${items.map(item => `<li>${item.detalle} (Bs ${item.precio.toFixed(2)})</li>`).join('')}
+  </ol>`;
 }
 
 async function cargarTablaTrabajos() {
@@ -139,7 +152,7 @@ async function cargarTablaTrabajos() {
       <td>${t.created_at? new Date(t.created_at).toLocaleDateString() : '-'}</td>
       <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
       <td>${t.orden_trabajo}</td>
-      <td>${t.repuestos_cambiados || '-'}</td>
+      <td>${formatearRepuestosHistorial(t.repuestos_cambiados)}</td>
       <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
       <td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td>
       <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
@@ -168,8 +181,12 @@ function mostrarLogin() {
 async function iniciarSesion() {
   const u = document.getElementById('usuario').value.trim()
   const p = document.getElementById('password').value.trim()
-  if(await verificarUsuario(u, p)) mostrarApp()
-  else document.getElementById('mensajeLogin').innerText = '❌ Usuario o contraseña incorrectos'
+  if(await verificarUsuario(u, p)) {
+    usuarioLogueado = u;
+    mostrarApp()
+  } else {
+    document.getElementById('mensajeLogin').innerText = '❌ Usuario o contraseña incorrectos'
+  }
 }
 
 async function registrar() {
@@ -182,6 +199,7 @@ async function registrar() {
 }
 
 function mostrarApp() {
+  const esAdmin = usuarioLogueado === 'admin';
   document.getElementById('app').innerHTML = `
     <div class="col">
       <h2 style="font-size: 35px">Control Taller MORA</h2>
@@ -189,9 +207,37 @@ function mostrarApp() {
       <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
       <button onclick="mostrarReportes()" style="width: 300px">📊 Reportes</button>
       <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
+      ${esAdmin ? `<button onclick="mostrarRegistroAdmin()" style="width: 300px; background: #4caf50">👤 Registrar Usuarios</button>` : ''}
       <button onclick="mostrarLogin()" style="width: 300px; background: #d32f2f">Cerrar sesión</button>
     </div>
   `
+}
+
+function mostrarRegistroAdmin() {
+  document.getElementById('app').innerHTML = `
+    <div class="col">
+      <h3>Registrar Nuevo Usuario</h3>
+      <input id="new_usuario" placeholder="Nuevo Usuario" style="width: 300px">
+      <input id="new_password" type="password" placeholder="Contraseña" style="width: 300px">
+      <button onclick="ejecutarRegistroAdmin()" style="width: 300px">Crear Cuenta</button>
+      <p id="mensajeRegistroAdmin"></p>
+      <button onclick="mostrarApp()" style="width: 300px; background: #555">← Volver al menú</button>
+    </div>
+  `
+}
+
+async function ejecutarRegistroAdmin() {
+  const u = document.getElementById('new_usuario').value.trim()
+  const p = document.getElementById('new_password').value.trim()
+  const msg = document.getElementById('mensajeRegistroAdmin')
+  if(!u ||!p) {msg.innerText = '⚠️ Completa todos los campos'; msg.style.color = 'orange'; return}
+  if(await crearUsuario(u, p)) {
+    msg.innerText = '✅ Usuario registrado con éxito'; msg.style.color = 'green'
+    document.getElementById('new_usuario').value = ''
+    document.getElementById('new_password').value = ''
+  } else {
+    msg.innerText = '❌ El usuario ya existe'; msg.style.color = 'red'
+  }
 }
 
 async function mostrarMecanicos() {
@@ -241,17 +287,29 @@ async function mostrarTrabajos() {
   document.getElementById('app').innerHTML = `
     <div>
       <h3>Nueva Orden de Trabajo</h3>
-      <select id="mecanico" style="width: 300px">
+      <select id="mecanico" style="width: 300px; display: block; margin: 5px auto;">
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
-      <input id="orden" placeholder="Orden de Trabajo N°" style="width: 300px">
-      <textarea id="repuestos" placeholder="Repuestos cambiados" style="width: 300px; height: 60px"></textarea>
-      <div class="row">
-        <input id="costo_rep" type="number" step="0.01" placeholder="Costo repuesto Bs" oninput="calcularTotal()" style="width: 145px">
+      
+      <div class="row" style="align-items: flex-start;">
+        <textarea id="orden" placeholder="Orden de Trabajo N°" style="width: 300px; height: 130px; resize: none;"></textarea>
+        
+        <div class="col" style="gap: 5px; align-items: flex-start;">
+          <span style="font-size:12px; color: #grey;">Repuestos Cambiados y Precios:</span>
+          <div id="contenedorRepuestos" class="repuestos-grid">
+            <input class="rep-det" placeholder="Repuesto" style="width:100%; margin:0; padding:5px;">
+            <input class="rep-pre" type="number" step="0.01" placeholder="Bs" oninput="calcularTotalRepuestos()" style="width:100%; margin:0; padding:5px;">
+          </div>
+          <button onclick="agregarFilaRepuesto()" style="padding: 2px 10px; font-size:12px; background:#555; margin-top:2px;">+ Añadir repuesto</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <input id="costo_rep" type="number" step="0.01" placeholder="Total repuestos Bs" readonly style="width: 145px; background: #222; color: #aaa;">
         <input id="costo_trab" type="number" step="0.01" placeholder="Costo trabajo Bs" oninput="calcularTotal()" style="width: 145px">
       </div>
-      <p id="total" style="font-size: 18px; font-weight: bold; color: #4caf50">Total: Bs 0.00</p>
-      <button onclick="guardarTrabajo()">Guardar Orden</button>
+      <p id="total" style="font-size: 18px; font-weight: bold; color: #4caf50; text-align:center;">Total: Bs 0.00</p>
+      <button onclick="guardarTrabajo()" style="display:block; margin: 10px auto;">Guardar Orden</button>
       <hr>
       <h3>Historial de Órdenes</h3>
       <table>
@@ -264,27 +322,69 @@ async function mostrarTrabajos() {
   document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
 }
 
+function agregarFilaRepuesto() {
+  const contenedor = document.getElementById('contenedorRepuestos');
+  
+  const inputDetalle = document.createElement('input');
+  inputDetalle.className = 'rep-det';
+  inputDetalle.placeholder = 'Repuesto';
+  inputDetalle.style.cssText = 'width:100%; margin:0; padding:5px;';
+  
+  const inputPrecio = document.createElement('input');
+  inputPrecio.className = 'rep-pre';
+  inputPrecio.type = 'number';
+  inputPrecio.step = '0.01';
+  inputPrecio.placeholder = 'Bs';
+  inputPrecio.style.cssText = 'width:100%; margin:0; padding:5px;';
+  inputPrecio.oninput = calcularTotalRepuestos;
+  
+  contenedor.appendChild(inputDetalle);
+  contenedor.appendChild(inputPrecio);
+}
+
+function calcularTotalRepuestos() {
+  const precios = document.getElementsByClassName('rep-pre');
+  let totalRep = 0;
+  for(let i=0; i<precios.length; i++) {
+    totalRep += parseFloat(precios[i].value || 0);
+  }
+  document.getElementById('costo_rep').value = totalRep.toFixed(2);
+  calcularTotal();
+}
+
 function calcularTotal() {
   const rep = parseFloat(document.getElementById('costo_rep').value || 0)
   const trab = parseFloat(document.getElementById('costo_trab').value || 0)
   document.getElementById('total').innerText = `Total: Bs ${(rep + trab).toFixed(2)}`
 }
 
+function obtenerStringRepuestos() {
+  const detalles = document.getElementsByClassName('rep-det');
+  const precios = document.getElementsByClassName('rep-pre');
+  let resultado = [];
+  
+  for(let i=0; i<detalles.length; i++) {
+    const det = detalles[i].value.trim();
+    const pre = parseFloat(precios[i].value || 0);
+    if(det) {
+      resultado.push(`${det} ${pre}`);
+    }
+  }
+  return resultado.length > 0 ? resultado.join('\n') : 'S/R';
+}
+
 async function guardarTrabajo() {
   const mec = document.getElementById('mecanico').value
   const orden = document.getElementById('orden').value.trim()
-  if(!mec ||!orden) return mostrarAviso('Selecciona mecánico y número de orden')
+  if(!mec ||!orden) return mostrarAviso('Selecciona mecánico y llena el número/detalle de orden')
 
-  await insertarTrabajo(mec, orden, document.getElementById('repuestos').value,
+  const repuestosString = obtenerStringRepuestos();
+
+  await insertarTrabajo(mec, orden, repuestosString,
     document.getElementById('costo_rep').value, document.getElementById('costo_trab').value)
 
-  mostrarAviso(`Orden ${orden} guardada ✅`)
-  document.getElementById('orden').value = ''
-  document.getElementById('repuestos').value = ''
-  document.getElementById('costo_rep').value = ''
-  document.getElementById('costo_trab').value = ''
-  document.getElementById('total').innerText = 'Total: Bs 0.00'
-  document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+  mostrarAviso(`Orden guardada ✅`)
+  mostrarTrabajos()
 }
 
 async function reporteGanancias(tipo, mecanico_id = null) {
@@ -313,7 +413,7 @@ async function reporteGanancias(tipo, mecanico_id = null) {
 }
 
 function parseRepuestos(repuestosStr) {
-  if (!repuestosStr || repuestosStr === 'S/R') return {items: [], total: 0}
+  if (!repuestosStr || repuestosStr === 'S/R' || repuestosStr === '-') return {items: [], total: 0}
 
   const items = []
   const lineas = repuestosStr.split('\n')
@@ -322,7 +422,6 @@ function parseRepuestos(repuestosStr) {
     linea = linea.trim()
     if (!linea) return
 
-    // Busca el último número de la línea como precio
     const match = linea.match(/(.+?)\s+(\d+\.?\d*)$/)
     if (match) {
       items.push({detalle: match[1].trim(), precio: parseFloat(match[2])})
@@ -339,7 +438,6 @@ async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
 
-  // Logo + Header igual que antes
   const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png'
   const logoBase64 = await urlToBase64(logoUrl)
   doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25)
@@ -355,12 +453,10 @@ async function generarPDF() {
   doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 39)
   doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44)
 
-  // Config tabla: aumenté ancho Orden a 60 para que no se corte
   const colX = [20, 55, 115, 150, 170]
-  const colWidth = [35, 60, 35, 20, 25] // Orden antes 55, ahora 60
+  const colWidth = [35, 60, 35, 20, 25]
   let y = 58
 
-  // Header con bordes
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
   doc.rect(20, y-5, 170, 12)
@@ -394,41 +490,35 @@ async function generarPDF() {
       if(y > 270) {doc.addPage(); y = 20}
       const estado = t.estado === 'pagado'? '[PAGADO]' : '[PENDIENTE]'
 
-      // CORRECCIÓN 1: Orden/Detalle multilínea
       const detalleText = `- Ord ${t.orden} ${estado}`
       const detalleLines = doc.splitTextToSize(detalleText, colWidth[1]-2)
 
-      // CORRECCIÓN 2: Repuestos con espacio de la línea
       const {items, total} = parseRepuestos(t.repuestos)
 
-      // Preparar líneas para tabla Repuestos
       let repuestosLines = []
       if (items.length === 0) {
         repuestosLines = ['S/R']
       } else {
-  items.forEach(item => {
-  repuestosLines.push(`${item.detalle} | Bs ${item.precio.toFixed(2)}`)
-  })
-  repuestosLines.push('---') // separador
-  repuestosLines.push(`TOTAL: Bs ${total.toFixed(2)}`)
-}
+        items.forEach((item, index) => {
+          repuestosLines.push(`${index + 1}. ${item.detalle} | Bs ${item.precio.toFixed(2)}`)
+        })
+        repuestosLines.push('---')
+        repuestosLines.push(`TOTAL: Bs ${total.toFixed(2)}`)
+      }
 
-const repuestosLinesFormateado = doc.splitTextToSize(repuestosLines.join('\n'), colWidth[2]-2)
+      const repuestosLinesFormateado = doc.splitTextToSize(repuestosLines.join('\n'), colWidth[2]-2)
 
-      // Calcular alto de fila según el que tenga más líneas
       const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1)
-      const currentRowHeight = linesCount * 6 + 4 // +4 para respiro
+      const currentRowHeight = linesCount * 6 + 4
 
-      // Dibujar bordes de la fila
       doc.rect(20, y-5, 170, currentRowHeight)
       doc.line(colX[0], y-5, colX[0], y-5+currentRowHeight)
       doc.line(colX[1], y-5, colX[1], y-5+currentRowHeight)
       doc.line(colX[2], y-5, colX[2], y-5+currentRowHeight)
       doc.line(colX[3], y-5, colX[3], y-5+currentRowHeight)
 
-      // Escribir contenido con espacio extra en Repuestos
       doc.text(detalleLines, colX[1], y)
-      doc.text(repuestosLines, colX[2], y+2) // +2px hacia abajo para separar de la línea
+      doc.text(repuestosLines, colX[2], y+2)
       doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y)
 
       y += currentRowHeight
@@ -485,7 +575,9 @@ async function cargarReporte(tipo) {
     const ganancia = d[2]
     const detalleTrabajos = trabajos.map(t => {
       const estado = t.estado === 'pagado'? '🟢' : '🟠'
-      return `<div style="text-align:left; font-size:12px">${estado} Ord ${t.orden}: ${t.repuestos || 'Sin repuestos'} - Bs ${t.ganancia.toFixed(2)}</div>`
+      const repuestosFormateados = t.repuestos && t.repuestos !== 'S/R' ? 
+        `<br><small>Repuestos:</small>${formatearRepuestosHistorial(t.repuestos)}` : ' - Sin repuestos';
+      return `<div style="text-align:left; font-size:12px; margin-bottom:5px;">${estado} Ord ${t.orden}: Bs ${t.ganancia.toFixed(2)} ${repuestosFormateados}</div>`
     }).join('')
     const fechas = [...new Set(trabajos.map(t => t.fecha))].join(', ')
     return `<tr><td>${nombre}</td><td>${trabajos.length}<br>${detalleTrabajos}</td><td>Bs ${ganancia.toFixed(2)}<br><span style="font-size:11px; color:grey">${fechas}</span></td></tr>`
