@@ -18,6 +18,8 @@ button:hover {background: #1976D2}
 .btn-pagado:hover {background: #388e3c}
 .btn-pendiente {background: #ff9800}
 .btn-pendiente:hover {background: #f57c00}
+.btn-editar {background: #9c27b0}
+.btn-editar:hover {background: #7b1fa2}
 table {width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px}
 th {background: #2196F3; color: white; padding: 10px}
 td {padding: 8px; border: 1px solid #444; text-align: center}
@@ -45,6 +47,7 @@ let mecanicoNombreActual = 'Todos'
 let fechaTextoActual = ''
 let mecanicosCache = []
 let usuarioLogueado = ''
+let idTrabajoEdicion = null
 
 function mostrarAviso(mensaje) {
   const snack = document.getElementById('snack')
@@ -94,6 +97,19 @@ async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep,
   }])
 }
 
+async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
+  const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
+  const {error} = await supabaseClient.from('trabajos').update({
+    mecanico_id,
+    orden_trabajo,
+    repuestos_cambiados: repuestos,
+    costo_repuesto: parseFloat(costo_rep || 0),
+    costo_trabajo: parseFloat(costo_trab || 0),
+    total
+  }).eq('id', id)
+  return !error
+}
+
 async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
   let query = supabaseClient.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
   if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
@@ -122,6 +138,7 @@ async function cambiarEstadoTrabajo(id) {
   const {error} = await supabaseClient.from('trabajos').update({estado: nuevoEstado}).eq('id', id)
   if(!error) {
     mostrarAviso(`Orden marcada como ${nuevoEstado.toUpperCase()} ✅`)
+    if(idTrabajoEdicion === id) cancelarEdicion();
     document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
   } else {
     mostrarAviso('Error al cambiar estado')
@@ -146,6 +163,10 @@ async function cargarTablaTrabajos() {
     const claseEstado = estado === 'pagado'? 'estado-pagado' : 'estado-pendiente'
     const claseBoton = estado === 'pagado'? 'btn-pendiente' : 'btn-pagado'
     const textoBoton = estado === 'pagado'? 'Marcar Pendiente' : 'Marcar Pagado'
+    
+    // Solo mostrar el botón editar si está PENDIENTE
+    const botonEditar = estado === 'pendiente' ? 
+      `<button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id})">Editar</button>` : '';
 
     return `
     <tr>
@@ -157,9 +178,71 @@ async function cargarTablaTrabajos() {
       <td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td>
       <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
       <td class="${claseEstado}">${estado.toUpperCase()}</td>
-      <td><button class="${claseBoton}" data-estado="${estado}" onclick="cambiarEstadoTrabajo(${t.id})">${textoBoton}</button></td>
+      <td>
+        <div class="row" style="gap:5px;">
+          <button class="${claseBoton}" data-estado="${estado}" onclick="cambiarEstadoTrabajo(${t.id})">${textoBoton}</button>
+          ${botonEditar}
+        </div>
+      </td>
     </tr>
   `}).join('')
+}
+
+function escapeJsonStr(str) {
+  if(!str) return '';
+  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+}
+
+function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoId) {
+  idTrabajoEdicion = id;
+  
+  // Mover vista hacia arriba para comodidad
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  
+  // Rellenar campos básicos
+  document.getElementById('mecanico').value = mecanicoId;
+  document.getElementById('orden').value = orden;
+  document.getElementById('costo_trab').value = costoTrabajo;
+  
+  // Reestructurar sección de repuestos vaciándola primero
+  const contenedor = document.getElementById('contenedorRepuestos');
+  contenedor.innerHTML = '';
+  
+  const { items } = parseRepuestos(repuestosStr);
+  if (items.length === 0) {
+    agregarFilaRepuesto();
+  } else {
+    items.forEach(item => {
+      agregarFilaRepuesto(item.detalle, item.precio);
+    });
+  }
+  
+  calcularTotalRepuestos();
+  
+  // Cambiar título de formulario y acción de botón principal
+  document.getElementById('tituloFormulario').innerText = `Editar Orden de Trabajo (ID: ${id})`;
+  const btnGuardar = document.getElementById('btnGuardarOrden');
+  btnGuardar.innerText = 'Actualizar Orden';
+  btnGuardar.style.background = '#ff9800';
+  
+  // Mostrar botón para cancelar
+  document.getElementById('btnCancelarEdicion').style.display = 'inline-block';
+}
+
+function cancelarEdicion() {
+  idTrabajoEdicion = null;
+  document.getElementById('tituloFormulario').innerText = 'Nueva Orden de Trabajo';
+  const btnGuardar = document.getElementById('btnGuardarOrden');
+  btnGuardar.innerText = 'Guardar Orden';
+  btnGuardar.style.background = '#2196F3';
+  document.getElementById('btnCancelarEdicion').style.display = 'none';
+  
+  // Limpiar campos
+  document.getElementById('orden').value = '';
+  document.getElementById('costo_trab').value = '';
+  document.getElementById('contenedorRepuestos').innerHTML = '';
+  agregarFilaRepuesto();
+  calcularTotalRepuestos();
 }
 
 function mostrarLogin() {
@@ -284,18 +367,20 @@ async function mostrarTrabajos() {
     return
   }
 
+  idTrabajoEdicion = null; // resetear estado de edicion
+
   document.getElementById('app').innerHTML = `
     <div>
-      <h3>Nueva Orden de Trabajo</h3>
+      <h3 id="tituloFormulario">Nueva Orden de Trabajo</h3>
       <select id="mecanico" style="width: 300px; display: block; margin: 5px auto;">
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
       
       <div class="row" style="align-items: flex-start;">
-        <textarea id="orden" placeholder="Orden de Trabajo N°" style="width: 300px; height: 130px; resize: none;"></textarea>
+        <textarea id="orden" placeholder="Orden de Trabajo N° / Detalle" style="width: 300px; height: 130px; resize: none;"></textarea>
         
         <div class="col" style="gap: 5px; align-items: flex-start;">
-          <span style="font-size:12px; color: #grey;">Repuestos Cambiados y Precios:</span>
+          <span style="font-size:12px; color: grey;">Repuestos Cambiados y Precios:</span>
           <div id="contenedorRepuestos" class="repuestos-grid">
             <input class="rep-det" placeholder="Repuesto" style="width:100%; margin:0; padding:5px;">
             <input class="rep-pre" type="number" step="0.01" placeholder="Bs" oninput="calcularTotalRepuestos()" style="width:100%; margin:0; padding:5px;">
@@ -309,7 +394,12 @@ async function mostrarTrabajos() {
         <input id="costo_trab" type="number" step="0.01" placeholder="Costo trabajo Bs" oninput="calcularTotal()" style="width: 145px">
       </div>
       <p id="total" style="font-size: 18px; font-weight: bold; color: #4caf50; text-align:center;">Total: Bs 0.00</p>
-      <button onclick="guardarTrabajo()" style="display:block; margin: 10px auto;">Guardar Orden</button>
+      
+      <div class="row">
+        <button id="btnGuardarOrden" onclick="guardarTrabajo()">Guardar Orden</button>
+        <button id="btnCancelarEdicion" onclick="cancelarEdicion()" style="display:none; background:#555;">Cancelar Edición</button>
+      </div>
+      
       <hr>
       <h3>Historial de Órdenes</h3>
       <table>
@@ -322,12 +412,13 @@ async function mostrarTrabajos() {
   document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
 }
 
-function agregarFilaRepuesto() {
+function agregarFilaRepuesto(detalle = '', precio = '') {
   const contenedor = document.getElementById('contenedorRepuestos');
   
   const inputDetalle = document.createElement('input');
   inputDetalle.className = 'rep-det';
   inputDetalle.placeholder = 'Repuesto';
+  inputDetalle.value = detalle;
   inputDetalle.style.cssText = 'width:100%; margin:0; padding:5px;';
   
   const inputPrecio = document.createElement('input');
@@ -335,6 +426,7 @@ function agregarFilaRepuesto() {
   inputPrecio.type = 'number';
   inputPrecio.step = '0.01';
   inputPrecio.placeholder = 'Bs';
+  inputPrecio.value = precio;
   inputPrecio.style.cssText = 'width:100%; margin:0; padding:5px;';
   inputPrecio.oninput = calcularTotalRepuestos;
   
@@ -376,15 +468,35 @@ function obtenerStringRepuestos() {
 async function guardarTrabajo() {
   const mec = document.getElementById('mecanico').value
   const orden = document.getElementById('orden').value.trim()
+  const costoTrabRaw = document.getElementById('costo_trab').value.trim()
+
+  // NUEVA VALIDACIÓN: Revisar si el Costo de Trabajo está vacío o ausente
+  if(!costoTrabRaw || parseFloat(costoTrabRaw) <= 0) {
+    alert('⚠️ Espacio Obligatorio: Debe llenar el costo del trabajo (Mano de Obra).')
+    mostrarAviso('Llene el costo del trabajo')
+    return
+  }
+
   if(!mec ||!orden) return mostrarAviso('Selecciona mecánico y llena el número/detalle de orden')
 
   const repuestosString = obtenerStringRepuestos();
+  const costoRep = document.getElementById('costo_rep').value;
 
-  await insertarTrabajo(mec, orden, repuestosString,
-    document.getElementById('costo_rep').value, document.getElementById('costo_trab').value)
-
-  mostrarAviso(`Orden guardada ✅`)
-  mostrarTrabajos()
+  if (idTrabajoEdicion) {
+    // Modo Edición: Actualizar registro existente
+    const exito = await actualizarTrabajoExistente(idTrabajoEdicion, mec, orden, repuestosString, costoRep, costoTrabRaw);
+    if(exito) {
+      mostrarAviso(`Orden ${orden} actualizada con éxito ✅`);
+      mostrarTrabajos();
+    } else {
+      mostrarAviso('Error al actualizar la orden ❌');
+    }
+  } else {
+    // Modo Normal: Insertar nueva orden
+    await insertarTrabajo(mec, orden, repuestosString, costoRep, costoTrabRaw);
+    mostrarAviso(`Orden ${orden} guardada ✅`);
+    mostrarTrabajos();
+  }
 }
 
 async function reporteGanancias(tipo, mecanico_id = null) {
