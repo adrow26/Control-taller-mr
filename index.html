@@ -687,36 +687,40 @@ function urlToBase64(url) {
 }
 
 async function cargarReporte(tipo) {
-  tipoReporteActual = tipo
-  const select = document.getElementById('filtroMec')
-  const mecId = select?.value
-  mecanicoNombreActual = mecId === 'todos'? 'Todos' : select.options[select.selectedIndex].text
+    tipoReporteActual = tipo;
+    const select = document.getElementById('filtroMec');
+    const buscador = document.getElementById('buscadorOrden')?.value.toLowerCase() || '';
+    const mecId = select?.value;
 
-  const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
-  datosReporteActuales = datos
-  fechaTextoActual = fechaTexto
+    const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos' ? null : mecId);
 
-  document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`
-  const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0)
-  document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
+    // Filtrar los datos por número de orden
+    const datosFiltrados = datos.map(d => {
+        const trabajosFiltrados = d[1].filter(t => t.orden.toLowerCase().includes(buscador));
+        const gananciaFiltrada = trabajosFiltrados.reduce((sum, t) => sum + t.ganancia, 0);
+        return [d[0], trabajosFiltrados, gananciaFiltrada];
+    }).filter(d => d[1].length > 0);
 
- const tbody = document.getElementById('tablaReporte');
-    
-    // Calcular totales de repuestos
+    datosReporteActuales = datosFiltrados;
+    fechaTextoActual = fechaTexto;
+
+    document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`;
+    const total = datosFiltrados.reduce((sum, d) => sum + (d[2] || 0), 0);
+    document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`;
+
+    const tbody = document.getElementById('tablaReporte');
     let totalRepuestosGlobal = 0;
-    datos.forEach(d => {
+    datosFiltrados.forEach(d => {
         d[1].forEach(t => {
             totalRepuestosGlobal += parseRepuestos(t.repuestos).total;
         });
     });
 
-    if (datos.length > 0) {
-        tbody.innerHTML = generarHTMLReporteDetallado(datos, totalRepuestosGlobal);
-    } else {
-        tbody.innerHTML = '<tr><td colspan="5">Sin datos en este período</td></tr>';
-    }
+    tbody.innerHTML = datosFiltrados.length > 0 
+        ? generarHTMLReporteDetallado(datosFiltrados, totalRepuestosGlobal) 
+        : '<tr><td colspan="5">Sin resultados para esta búsqueda</td></tr>';
 }
-
+  
 async function mostrarReportes() {
   mecanicosCache = await obtenerMecanicos()
   document.getElementById('app').innerHTML = `
@@ -729,6 +733,9 @@ async function mostrarReportes() {
         <option value="todos">Todos</option>
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
+      <input id="buscadorOrden" placeholder="Buscar por N° de orden..." 
+            oninput="cargarReporte(tipoReporteActual)" 
+            style="width: 300px; display:block; margin: 5px auto; padding: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 4px;">
       <div class="row">
         <button onclick="cargarReporte('dia')">Hoy</button>
         <button onclick="cargarReporte('semana')">Semana</button>
