@@ -569,52 +569,103 @@ function generarHTMLReporteDetallado(datos, totalRepuestos) {
 }
 
 async function generarPDF() {
-  const {jsPDF} = window.jspdf
-  const doc = new jsPDF()
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
 
-  // ... (tu código de logo y encabezados se mantiene igual)
+  // 1. Configuración inicial y variables de diseño
+  const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png';
+  const logoBase64 = await urlToBase64(logoUrl);
+  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25);
+
+  let y = 58;
+  const colX = [20, 55, 115, 150, 170];
+  const colWidth = [35, 60, 35, 20, 25];
   
-  // ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ AQUÍ:
-  let y = 58 
+  let totalManoObra = 0;
+  let totalGeneralRepuestos = 0;
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  // ... (resto de tus dibujos de texto)
+  // 2. Encabezados del documento
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('TALLER DE MOTOS - MORA', 20, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26);
+  doc.setFontSize(11);
+  doc.text(`Período: ${tipoReporteActual || 'N/A'} - ${fechaTextoActual || ''}`, 20, 34);
+  doc.text(`Mecánico: ${mecanicoNombreActual || 'Todos'}`, 20, 39);
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44);
 
-  let totalManoObra = 0
-  let totalGeneralRepuestos = 0
+  // 3. Encabezados de tabla
+  doc.setFont('helvetica', 'bold');
+  doc.rect(20, y - 5, 170, 12);
+  doc.text('Mecánico', colX[0], y);
+  doc.text('Orden/Detalle', colX[1], y);
+  doc.text('Repuestos', colX[2], y);
+  doc.text('Monto', colX[3], y);
+  doc.text('Ganancia', colX[4], y);
+  y += 12;
+
+  // 4. Procesamiento de datos
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
 
   datosReporteActuales.forEach(d => {
-    const nombre = d[0]
-    const trabajos = d[1] // <--- ¡ESTO ES LO QUE FALTABA!
-    const ganancia = d[2]
+    const nombre = d[0];
+    const trabajos = d[1];
+    const ganancia = d[2];
 
-    if(y > 270) {doc.addPage(); y = 20}
-    doc.rect(20, y-5, 170, 7)
-    doc.setFont('helvetica', 'bold')
-    doc.text(nombre, colX[0], y)
-    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y)
-    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y)
-    doc.setFont('helvetica', 'normal')
-    y += 7
+    if (y > 270) { doc.addPage(); y = 20; }
+    doc.rect(20, y - 5, 170, 7);
+    doc.setFont('helvetica', 'bold');
+    doc.text(nombre, colX[0], y);
+    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y);
+    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y);
+    doc.setFont('helvetica', 'normal');
+    y += 7;
 
     trabajos.forEach(t => {
-      if(y > 270) {doc.addPage(); y = 20}
+      if (y > 270) { doc.addPage(); y = 20; }
       
-      const {items, total} = parseRepuestos(t.repuestos)
-      totalGeneralRepuestos += total
-      
-      // ... aquí va el resto de tu lógica de dibujo (doc.text, doc.line, etc.)
-      
-      y += currentRowHeight
-    })
-    totalManoObra += ganancia
-    y += 3
-  })
+      const { items, total } = parseRepuestos(t.repuestos);
+      totalGeneralRepuestos += total;
 
-  // DIBUJO DE TOTALES AL FINAL
-  y += 5
-  // ... (código de los totales)
+      const estado = t.estado === 'pagado' ? '[PAGADO]' : '[PENDIENTE]';
+      const detalleText = `- Ord ${t.orden} ${estado}`;
+      const detalleLines = doc.splitTextToSize(detalleText, colWidth[1] - 2);
+
+      let repuestosLines = items.length === 0 ? ['S/R'] : items.map((item, i) => `${i + 1}. ${item.detalle} | Bs ${item.precio.toFixed(2)}`);
+      if (items.length > 0) repuestosLines.push('---', `TOTAL: Bs ${total.toFixed(2)}`);
+
+      const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1);
+      const currentRowHeight = linesCount * 6 + 4;
+
+      doc.rect(20, y - 5, 170, currentRowHeight);
+      doc.text(detalleLines, colX[1], y);
+      doc.text(repuestosLines, colX[2], y + 2);
+      doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y);
+
+      y += currentRowHeight;
+    });
+    totalManoObra += ganancia;
+    y += 3;
+  });
+
+  // 5. Totales Finales
+  y += 5;
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL MANO DE OBRA:', 20, y);
+  doc.text(`Bs ${totalManoObra.toFixed(2)}`, 160, y);
+  y += 7;
+  doc.text('TOTAL REPUESTOS:', 20, y);
+  doc.text(`Bs ${totalGeneralRepuestos.toFixed(2)}`, 160, y);
+  y += 7;
+  doc.line(20, y - 5, 190, y - 5);
+  doc.text('TOTAL GENERAL:', 20, y);
+  doc.text(`Bs ${(totalManoObra + totalGeneralRepuestos).toFixed(2)}`, 160, y);
+
+  doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`);
 }
   
 function urlToBase64(url) {
