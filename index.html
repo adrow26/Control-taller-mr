@@ -585,16 +585,26 @@ async function generarPDF() {
   let totalGeneralRepuestos = 0
 
   datosReporteActuales.forEach(d => {
-    // ... tu lógica de forEach
-    
+    const nombre = d[0]
+    const trabajos = d[1] // <--- ¡ESTO ES LO QUE FALTABA!
+    const ganancia = d[2]
+
+    if(y > 270) {doc.addPage(); y = 20}
+    doc.rect(20, y-5, 170, 7)
+    doc.setFont('helvetica', 'bold')
+    doc.text(nombre, colX[0], y)
+    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y)
+    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y)
+    doc.setFont('helvetica', 'normal')
+    y += 7
+
     trabajos.forEach(t => {
-      // Si usas 'y' aquí, asegúrate de que la variable esté accesible
       if(y > 270) {doc.addPage(); y = 20}
       
       const {items, total} = parseRepuestos(t.repuestos)
       totalGeneralRepuestos += total
       
-      // ... resto de tu lógica
+      // ... aquí va el resto de tu lógica de dibujo (doc.text, doc.line, etc.)
       
       y += currentRowHeight
     })
