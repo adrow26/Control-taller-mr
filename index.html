@@ -572,39 +572,30 @@ async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
 
-  // ... (tu código de logo y encabezados se mantiene igual hasta la línea 48)
+  // ... (tu código de logo y encabezados se mantiene igual)
+  
+  // ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ AQUÍ:
+  let y = 58 
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(20)
+  // ... (resto de tus dibujos de texto)
+
   let totalManoObra = 0
-  let totalGeneralRepuestos = 0 // Nueva variable
+  let totalGeneralRepuestos = 0
 
   datosReporteActuales.forEach(d => {
-    const nombre = d[0]
-    const trabajos = d[1]
-    const ganancia = d[2]
-
-    if(y > 270) {doc.addPage(); y = 20}
-    doc.rect(20, y-5, 170, 7)
-    doc.setFont('helvetica', 'bold')
-    doc.text(nombre, colX[0], y)
-    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y)
-    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y)
-    doc.setFont('helvetica', 'normal')
-    y += 7
-
+    // ... tu lógica de forEach
+    
     trabajos.forEach(t => {
+      // Si usas 'y' aquí, asegúrate de que la variable esté accesible
       if(y > 270) {doc.addPage(); y = 20}
       
       const {items, total} = parseRepuestos(t.repuestos)
-      totalGeneralRepuestos += total // Acumulamos el total de repuestos
-
-      // ... (el resto de tu lógica de diseño sigue igual)
+      totalGeneralRepuestos += total
       
-      doc.text(detalleLines, colX[1], y)
-      doc.text(repuestosLines, colX[2], y+2)
-      doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y)
-
+      // ... resto de tu lógica
+      
       y += currentRowHeight
     })
     totalManoObra += ganancia
@@ -613,25 +604,7 @@ async function generarPDF() {
 
   // DIBUJO DE TOTALES AL FINAL
   y += 5
-  doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  
-  // Total Mano de Obra
-  doc.text('TOTAL MANO DE OBRA:', 20, y)
-  doc.text(`Bs ${totalManoObra.toFixed(2)}`, 160, y)
-  y += 7
-  
-  // Total Repuestos
-  doc.text('TOTAL REPUESTOS:', 20, y)
-  doc.text(`Bs ${totalGeneralRepuestos.toFixed(2)}`, 160, y)
-  y += 7
-  
-  // Gran Total
-  doc.line(20, y-5, 190, y-5)
-  doc.text('TOTAL GENERAL:', 20, y)
-  doc.text(`Bs ${(totalManoObra + totalGeneralRepuestos).toFixed(2)}`, 160, y)
-
-  doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
+  // ... (código de los totales)
 }
   
 function urlToBase64(url) {
