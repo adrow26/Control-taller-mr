@@ -715,6 +715,7 @@ async function cargarReporte(tipo) {
     } else {
         tbody.innerHTML = '<tr><td colspan="5">Sin datos en este período</td></tr>';
     }
+}
 
 async function mostrarReportes() {
   mecanicosCache = await obtenerMecanicos()
