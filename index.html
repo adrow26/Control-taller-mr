@@ -538,6 +538,36 @@ function parseRepuestos(repuestosStr) {
   return {items, total}
 }
 
+function generarHTMLReporteDetallado(datos, totalRepuestos) {
+    let indexGlobal = 1;
+    const filas = datos.map(d => {
+        return d[1].map(t => {
+            const { total } = parseRepuestos(t.repuestos);
+            return `
+                <tr>
+                    <td>${indexGlobal++}</td>
+                    <td>${t.orden}</td>
+                    <td>${t.estado === 'pagado' ? 'PAGADO' : 'PENDIENTE'}</td>
+                    <td>${t.repuestos !== 'S/R' ? t.repuestos.replace(/\n/g, '<br>') : '-'}</td>
+                    <td>Bs ${total.toFixed(2)}</td>
+                </tr>`;
+        }).join('');
+    }).join('');
+
+    return `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; color: #fff;">
+            <thead>
+                <tr style="background: #2196F3;">
+                    <th>N°</th><th>Orden</th><th>Estado</th><th>Repuestos</th><th>Costo Rep.</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filas}
+                <tr><td colspan="4" style="text-align:right"><strong>Total Repuestos:</strong></td><td><strong>Bs ${totalRepuestos.toFixed(2)}</strong></td></tr>
+            </tbody>
+        </table>`;
+}
+
 async function generarPDF() {
   const {jsPDF} = window.jspdf
   const doc = new jsPDF()
@@ -670,21 +700,21 @@ async function cargarReporte(tipo) {
   const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0)
   document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
 
-  const tbody = document.getElementById('tablaReporte')
-  tbody.innerHTML = datos.length > 0? datos.map(d => {
-    const nombre = d[0]
-    const trabajos = d[1]
-    const ganancia = d[2]
-    const detalleTrabajos = trabajos.map(t => {
-      const estado = t.estado === 'pagado'? '🟢' : '🟠'
-      const repuestosFormateados = t.repuestos && t.repuestos !== 'S/R' ? 
-        `<br><small>Repuestos:</small>${formatearRepuestosHistorial(t.repuestos)}` : ' - Sin repuestos';
-      return `<div style="text-align:left; font-size:12px; margin-bottom:5px;">${estado} Ord ${t.orden}: Bs ${t.ganancia.toFixed(2)} ${repuestosFormateados}</div>`
-    }).join('')
-    const fechas = [...new Set(trabajos.map(t => t.fecha))].join(', ')
-    return `<tr><td>${nombre}</td><td>${trabajos.length}<br>${detalleTrabajos}</td><td>Bs ${ganancia.toFixed(2)}<br><span style="font-size:11px; color:grey">${fechas}</span></td></tr>`
-  }).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
-}
+ const tbody = document.getElementById('tablaReporte');
+    
+    // Calcular totales de repuestos
+    let totalRepuestosGlobal = 0;
+    datos.forEach(d => {
+        d[1].forEach(t => {
+            totalRepuestosGlobal += parseRepuestos(t.repuestos).total;
+        });
+    });
+
+    if (datos.length > 0) {
+        tbody.innerHTML = generarHTMLReporteDetallado(datos, totalRepuestosGlobal);
+    } else {
+        tbody.innerHTML = '<tr><td colspan="5">Sin datos en este período</td></tr>';
+    }
 
 async function mostrarReportes() {
   mecanicosCache = await obtenerMecanicos()
