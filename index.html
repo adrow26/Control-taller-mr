@@ -31,6 +31,10 @@ td {padding: 8px; border: 1px solid #444; text-align: center}
 .estado-pendiente {color: #ff9800; font-weight: bold}
 .repuestos-grid {display: grid; grid-template-columns: 2fr 1fr; gap: 5px; width: 300px; max-height: 120px; overflow-y: auto; background: #222; padding: 5px; border-radius: 4px; border: 1px solid #555;}
 .repuestos-lista-historial {text-align: left; margin: 0; padding-left: 20px; font-size: 12px;}
+.tabla-wrap {overflow: auto; max-height: 480px; margin-top: 15px; border: 1px solid #444; border-radius: 4px;}
+.tabla-wrap table {margin-top: 0;}
+.tabla-wrap th {position: sticky; top: 0; z-index: 2;}
+.btn-volver-fijo {position: sticky; bottom: 0; width: 100%; margin-top: 15px; box-shadow: 0 -4px 10px rgba(0,0,0,0.4);}
 </style>
 </head>
 <body>
@@ -67,7 +71,9 @@ async function crearTablasTaller() {
 }
 
 async function verificarUsuario(usuario, password) {
-  const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
+  const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
+  console.log('DEBUG login -> usuario enviado:', JSON.stringify(usuario), '| password enviado:', JSON.stringify(password))
+  console.log('DEBUG login -> respuesta Supabase:', data, '| error:', error)
   return data && data.length > 0
 }
 
@@ -198,7 +204,14 @@ function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoI
   window.scrollTo({top: 0, behavior: 'smooth'});
   
   document.getElementById('mecanico').value = mecanicoId;
-  document.getElementById('orden').value = orden;
+  const sepOrden = orden.indexOf(' | ');
+  if(sepOrden !== -1) {
+    document.getElementById('placaCliente').value = orden.slice(0, sepOrden);
+    document.getElementById('detalleOrden').value = orden.slice(sepOrden + 3);
+  } else {
+    document.getElementById('placaCliente').value = '';
+    document.getElementById('detalleOrden').value = orden;
+  }
   document.getElementById('costo_trab').value = costoTrabajo;
   
   const contenedor = document.getElementById('contenedorRepuestos');
@@ -231,7 +244,8 @@ function cancelarEdicion() {
   btnGuardar.style.background = '#2196F3';
   document.getElementById('btnCancelarEdicion').style.display = 'none';
   
-  document.getElementById('orden').value = '';
+  document.getElementById('placaCliente').value = '';
+  document.getElementById('detalleOrden').value = '';
   document.getElementById('costo_trab').value = '';
   document.getElementById('contenedorRepuestos').innerHTML = '';
   agregarFilaRepuesto();
@@ -372,8 +386,11 @@ async function mostrarTrabajos() {
       </select>
       
       <div class="row" style="align-items: flex-start;">
-        <textarea id="orden" placeholder="Orden de Trabajo N° / Detalle" style="width: 300px; height: 130px; resize: none;"></textarea>
-        
+        <div class="col" style="gap: 5px; align-items: flex-start;">
+          <input id="placaCliente" placeholder="Placa de la moto / Nombre del cliente" style="width: 300px;">
+          <textarea id="detalleOrden" placeholder="Detalle del trabajo a realizar" style="width: 300px; height: 100px; resize: none;"></textarea>
+        </div>
+
         <div class="col" style="gap: 5px; align-items: flex-start;">
           <span style="font-size:12px; color: grey;">Repuestos Cambiados y Precios:</span>
           <div id="contenedorRepuestos" class="repuestos-grid">
@@ -397,11 +414,15 @@ async function mostrarTrabajos() {
       
       <hr>
       <h3>Historial de Órdenes</h3>
-      <table>
-        <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
-        <tbody id="tablaTrabajos"></tbody>
-      </table>
-      <button onclick="mostrarApp()">← Volver al menú</button>
+      <div class="tabla-wrap">
+        <table>
+          <thead>
+            <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
+          </thead>
+          <tbody id="tablaTrabajos"></tbody>
+        </table>
+      </div>
+      <button class="btn-volver-fijo" onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
   document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
@@ -462,7 +483,8 @@ function obtenerStringRepuestos() {
 
 async function guardarTrabajo() {
   const mec = document.getElementById('mecanico').value
-  const orden = document.getElementById('orden').value.trim()
+  const placa = document.getElementById('placaCliente').value.trim()
+  const detalle = document.getElementById('detalleOrden').value.trim()
   const costoTrabRaw = document.getElementById('costo_trab').value.trim()
 
   if(!costoTrabRaw || parseFloat(costoTrabRaw) <= 0) {
@@ -471,7 +493,9 @@ async function guardarTrabajo() {
     return
   }
 
-  if(!mec ||!orden) return mostrarAviso('Selecciona mecánico y llena el número/detalle de orden')
+  if(!mec ||!placa ||!detalle) return mostrarAviso('Selecciona mecánico y llena la placa/cliente y el detalle de la orden')
+
+  const orden = `${placa} | ${detalle}`
 
   const repuestosString = obtenerStringRepuestos();
   const costoRep = document.getElementById('costo_rep').value;
