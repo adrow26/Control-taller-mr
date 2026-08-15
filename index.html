@@ -68,12 +68,58 @@ async function crearTablasTaller() {
       await supabaseClient.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
     }
   } catch(e) {console.error(e)}
+
+  try {
+    const {data: detalles} = await supabaseClient.from('detalles_comunes').select('id')
+    if(detalles && detalles.length === 0) {
+      const listaBase = [
+        'Cambio de aceite y filtro',
+        'Revisión y ajuste de frenos',
+        'Cambio de pastillas de freno',
+        'Ajuste y engrase de cadena',
+        'Cambio de llanta/neumático',
+        'Revisión eléctrica general',
+        'Cambio de batería',
+        'Cambio de bujía',
+        'Lavado general y engrasado',
+        'Revisión de motor'
+      ]
+      await supabaseClient.from('detalles_comunes').insert(listaBase.map(d => ({detalle: d})))
+    }
+  } catch(e) {console.error(e)}
+}
+
+async function obtenerDetallesComunes() {
+  try {
+    const {data} = await supabaseClient.from('detalles_comunes').select('detalle').order('detalle', {ascending: true})
+    return data || []
+  } catch(e) {
+    console.error(e)
+    return []
+  }
+}
+
+async function llenarDatalistDetalles() {
+  const lista = await obtenerDetallesComunes()
+  const datalist = document.getElementById('listaDetalles')
+  if(datalist) {
+    datalist.innerHTML = lista.map(d => `<option value="${String(d.detalle).replace(/"/g, '&quot;')}"></option>`).join('')
+  }
+}
+
+async function guardarDetalleComunSiNuevo(detalle) {
+  const detalleNorm = detalle.trim()
+  if(!detalleNorm) return
+  try {
+    const {data} = await supabaseClient.from('detalles_comunes').select('id').ilike('detalle', detalleNorm)
+    if(!data || data.length === 0) {
+      await supabaseClient.from('detalles_comunes').insert([{detalle: detalleNorm}])
+    }
+  } catch(e) {console.error(e)}
 }
 
 async function verificarUsuario(usuario, password) {
-  const {data, error} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
-  console.log('DEBUG login -> usuario enviado:', JSON.stringify(usuario), '| password enviado:', JSON.stringify(password))
-  console.log('DEBUG login -> respuesta Supabase:', data, '| error:', error)
+  const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
   return data && data.length > 0
 }
 
@@ -91,7 +137,7 @@ async function obtenerMecanicos() {
   return data || []
 }
 
-async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
+async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab, hora_ingreso) {
   const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
   await supabaseClient.from('trabajos').insert([{
     mecanico_id,
@@ -100,11 +146,12 @@ async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep,
     costo_repuesto: parseFloat(costo_rep || 0),
     costo_trabajo: parseFloat(costo_trab || 0),
     total,
-    estado: 'pendiente'
+    estado: 'pendiente',
+    hora_ingreso: hora_ingreso || null
   }])
 }
 
-async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
+async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab, hora_ingreso) {
   const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
   const {error} = await supabaseClient.from('trabajos').update({
     mecanico_id,
@@ -112,7 +159,8 @@ async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repues
     repuestos_cambiados: repuestos,
     costo_repuesto: parseFloat(costo_rep || 0),
     costo_trabajo: parseFloat(costo_trab || 0),
-    total
+    total,
+    hora_ingreso: hora_ingreso || null
   }).eq('id', id)
   return !error
 }
@@ -172,11 +220,12 @@ async function cargarTablaTrabajos() {
     const textoBoton = estado === 'pagado'? 'Marcar Pendiente' : 'Marcar Pagado'
     
     const botonEditar = estado === 'pendiente' ? 
-      `<button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id})">Editar</button>` : '';
+      `<button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id}, '${escapeJsonStr(t.hora_ingreso)}')">Editar</button>` : '';
 
     return `
     <tr>
-      <td>${t.created_at? new Date(t.created_at).toLocaleDateString() : '-'}</td>
+      <td>${t.created_at? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
+      <td>${t.hora_ingreso || '-'}</td>
       <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
       <td>${t.orden_trabajo}</td>
       <td>${formatearRepuestosHistorial(t.repuestos_cambiados)}</td>
@@ -199,7 +248,7 @@ function escapeJsonStr(str) {
   return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
-function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoId) {
+function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoId, horaIngreso) {
   idTrabajoEdicion = id;
   window.scrollTo({top: 0, behavior: 'smooth'});
   
@@ -213,6 +262,7 @@ function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoI
     document.getElementById('detalleOrden').value = orden;
   }
   document.getElementById('costo_trab').value = costoTrabajo;
+  document.getElementById('horaIngreso').value = (horaIngreso && horaIngreso !== 'null') ? horaIngreso : '';
   
   const contenedor = document.getElementById('contenedorRepuestos');
   contenedor.innerHTML = '';
@@ -247,6 +297,7 @@ function cancelarEdicion() {
   document.getElementById('placaCliente').value = '';
   document.getElementById('detalleOrden').value = '';
   document.getElementById('costo_trab').value = '';
+  document.getElementById('horaIngreso').value = new Date().toTimeString().slice(0,5);
   document.getElementById('contenedorRepuestos').innerHTML = '';
   agregarFilaRepuesto();
   calcularTotalRepuestos();
@@ -384,11 +435,17 @@ async function mostrarTrabajos() {
       <select id="mecanico" style="width: 300px; display: block; margin: 5px auto;">
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
+
+      <div class="row" style="justify-content: center; align-items: center; gap: 8px; margin-top: 5px;">
+        <label for="horaIngreso" style="font-size:13px; color: grey;">Hora de ingreso al trabajo:</label>
+        <input type="time" id="horaIngreso" style="width: 130px;">
+      </div>
       
       <div class="row" style="align-items: flex-start;">
         <div class="col" style="gap: 5px; align-items: flex-start;">
           <input id="placaCliente" placeholder="Placa de la moto / Nombre del cliente" style="width: 300px;">
-          <textarea id="detalleOrden" placeholder="Detalle del trabajo a realizar" style="width: 300px; height: 100px; resize: none;"></textarea>
+          <input id="detalleOrden" list="listaDetalles" placeholder="Detalle del trabajo (elige o escribe uno nuevo)" style="width: 300px;" autocomplete="off">
+          <datalist id="listaDetalles"></datalist>
         </div>
 
         <div class="col" style="gap: 5px; align-items: flex-start;">
@@ -417,7 +474,7 @@ async function mostrarTrabajos() {
       <div class="tabla-wrap">
         <table>
           <thead>
-            <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
+            <tr><th>Fecha</th><th>Hora Ingreso</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
           </thead>
           <tbody id="tablaTrabajos"></tbody>
         </table>
@@ -426,6 +483,8 @@ async function mostrarTrabajos() {
     </div>
   `
   document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+  await llenarDatalistDetalles()
+  document.getElementById('horaIngreso').value = new Date().toTimeString().slice(0,5)
 }
 
 function agregarFilaRepuesto(detalle = '', precio = '') {
@@ -485,6 +544,7 @@ async function guardarTrabajo() {
   const mec = document.getElementById('mecanico').value
   const placa = document.getElementById('placaCliente').value.trim()
   const detalle = document.getElementById('detalleOrden').value.trim()
+  const horaIngreso = document.getElementById('horaIngreso').value
   const costoTrabRaw = document.getElementById('costo_trab').value.trim()
 
   if(!costoTrabRaw || parseFloat(costoTrabRaw) <= 0) {
@@ -501,15 +561,17 @@ async function guardarTrabajo() {
   const costoRep = document.getElementById('costo_rep').value;
 
   if (idTrabajoEdicion) {
-    const exito = await actualizarTrabajoExistente(idTrabajoEdicion, mec, orden, repuestosString, costoRep, costoTrabRaw);
+    const exito = await actualizarTrabajoExistente(idTrabajoEdicion, mec, orden, repuestosString, costoRep, costoTrabRaw, horaIngreso);
     if(exito) {
+      await guardarDetalleComunSiNuevo(detalle);
       mostrarAviso(`Orden ${orden} actualizada con éxito ✅`);
       mostrarTrabajos();
     } else {
       mostrarAviso('Error al actualizar la orden ❌');
     }
   } else {
-    await insertarTrabajo(mec, orden, repuestosString, costoRep, costoTrabRaw);
+    await insertarTrabajo(mec, orden, repuestosString, costoRep, costoTrabRaw, horaIngreso);
+    await guardarDetalleComunSiNuevo(detalle);
     mostrarAviso(`Orden ${orden} guardada ✅`);
     mostrarTrabajos();
   }
