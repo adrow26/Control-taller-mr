@@ -63,13 +63,6 @@ function mostrarAviso(mensaje) {
 
 async function crearTablasTaller() {
   try {
-    const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
-    if(!data || data.length === 0) {
-      await supabaseClient.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
-    }
-  } catch(e) {console.error(e)}
-
-  try {
     const {data: detalles} = await supabaseClient.from('detalles_comunes').select('id')
     if(detalles && detalles.length === 0) {
       const listaBase = [
@@ -119,13 +112,15 @@ async function guardarDetalleComunSiNuevo(detalle) {
 }
 
 async function verificarUsuario(usuario, password) {
-  const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
-  return data && data.length > 0
+  const {data, error} = await supabaseClient.rpc('verificar_login', {p_usuario: usuario, p_password: password})
+  if(error) { console.error(error); return false }
+  return data === true
 }
 
 async function crearUsuario(usuario, password) {
-  const {error} = await supabaseClient.from('usuarios').insert([{usuario, password}])
-  return !error
+  const {data, error} = await supabaseClient.rpc('crear_usuario', {p_usuario: usuario, p_password: password})
+  if(error) { console.error(error); return false }
+  return data === true
 }
 
 async function insertarMecanico(nombre, telefono, especialidad) {
@@ -138,39 +133,34 @@ async function obtenerMecanicos() {
 }
 
 async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab, hora_ingreso) {
-  const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
-  await supabaseClient.from('trabajos').insert([{
-    mecanico_id,
-    orden_trabajo,
-    repuestos_cambiados: repuestos,
-    costo_repuesto: parseFloat(costo_rep || 0),
-    costo_trabajo: parseFloat(costo_trab || 0),
-    total,
-    estado: 'pendiente',
-    hora_ingreso: hora_ingreso || null
-  }])
+  await supabaseClient.rpc('insertar_trabajo', {
+    p_mecanico_id: mecanico_id,
+    p_orden_trabajo: orden_trabajo,
+    p_repuestos: repuestos,
+    p_costo_rep: parseFloat(costo_rep || 0),
+    p_costo_trab: parseFloat(costo_trab || 0),
+    p_hora_ingreso: hora_ingreso || null
+  })
 }
 
 async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab, hora_ingreso) {
-  const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
-  const {error} = await supabaseClient.from('trabajos').update({
-    mecanico_id,
-    orden_trabajo,
-    repuestos_cambiados: repuestos,
-    costo_repuesto: parseFloat(costo_rep || 0),
-    costo_trabajo: parseFloat(costo_trab || 0),
-    total,
-    hora_ingreso: hora_ingreso || null
-  }).eq('id', id)
+  const {error} = await supabaseClient.rpc('actualizar_trabajo', {
+    p_id: id,
+    p_mecanico_id: mecanico_id,
+    p_orden_trabajo: orden_trabajo,
+    p_repuestos: repuestos,
+    p_costo_rep: parseFloat(costo_rep || 0),
+    p_costo_trab: parseFloat(costo_trab || 0),
+    p_hora_ingreso: hora_ingreso || null
+  })
   return !error
 }
 
 async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
-  let query = supabaseClient.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
-  if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
-
-  let {data} = await query
+  let {data} = await supabaseClient.rpc('obtener_trabajos')
   if(!data) return []
+
+  if(mecanico_id) data = data.filter(t => String(t.mecanico_id) === String(mecanico_id))
 
   if(filtroFecha) {
     const hoy = new Date()
@@ -190,7 +180,7 @@ async function cambiarEstadoTrabajo(id) {
   const estadoActual = btn.dataset.estado || 'pendiente'
   const nuevoEstado = estadoActual === 'pagado'? 'pendiente' : 'pagado'
 
-  const {error} = await supabaseClient.from('trabajos').update({estado: nuevoEstado}).eq('id', id)
+  const {error} = await supabaseClient.rpc('cambiar_estado_trabajo', {p_id: id, p_nuevo_estado: nuevoEstado})
   if(!error) {
     mostrarAviso(`Orden marcada como ${nuevoEstado.toUpperCase()} ✅`)
     if(idTrabajoEdicion === id) cancelarEdicion();
@@ -226,7 +216,7 @@ async function cargarTablaTrabajos() {
     <tr>
       <td>${t.created_at? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
       <td>${t.hora_ingreso || '-'}</td>
-      <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
+      <td>${t.mecanico_nombre || 'Sin asignar'}</td>
       <td>${t.orden_trabajo}</td>
       <td>${formatearRepuestosHistorial(t.repuestos_cambiados)}</td>
       <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
@@ -587,7 +577,7 @@ async function reporteGanancias(tipo, mecanico_id = null) {
 
   const agrupado = {}
   trabajos.forEach(t => {
-    const nombre = t.mecanicos?.nombre || 'Sin asignar'
+    const nombre = t.mecanico_nombre || 'Sin asignar'
     if(!agrupado[nombre]) agrupado[nombre] = {trabajos: [], ganancia: 0}
     agrupado[nombre].trabajos.push({
       orden: t.orden_trabajo,
