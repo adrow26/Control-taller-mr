@@ -672,6 +672,10 @@ function verDetalleOrden(id) {
         <tr><td style="text-align:right;"><strong>TOTAL GENERAL:</strong></td><td><strong>Bs ${parseFloat(t.total || 0).toFixed(2)}</strong></td></tr>
       </tbody>
     </table>
+    <div class="row" style="justify-content:center; gap:10px; margin-top:15px;">
+      <button onclick="generarPDFOrden(${t.id})">📄 Descargar PDF</button>
+      <button onclick="imprimirDetalleOrden(${t.id})" style="background:#555;">🖨️ Imprimir</button>
+    </div>
   `
   document.getElementById('modalDetalleOrden').classList.add('activo')
 }
@@ -679,6 +683,150 @@ function verDetalleOrden(id) {
 function cerrarDetalleOrden(event) {
   if(event && event.target !== event.currentTarget) return
   document.getElementById('modalDetalleOrden').classList.remove('activo')
+}
+
+async function generarPDFOrden(id) {
+  const t = trabajosCache.find(tr => String(tr.id) === String(id))
+  if(!t) return
+
+  const sep = (t.orden_trabajo || '').indexOf(' | ')
+  const placa = sep !== -1 ? t.orden_trabajo.slice(0, sep) : '-'
+  const detalle = sep !== -1 ? t.orden_trabajo.slice(sep + 3) : t.orden_trabajo
+  const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'
+  const estado = t.estado || 'pendiente'
+  const { items, total: totalRepuestos } = parseRepuestos(t.repuestos_cambiados)
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png';
+  const logoBase64 = await urlToBase64(logoUrl);
+  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('TALLER DE MOTOS - MORA', 20, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26);
+  doc.setFontSize(11);
+  doc.text(`Orden N°: ${t.id}`, 20, 36);
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 42);
+
+  let y = 55;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Datos de la Orden', 20, y);
+  y += 8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Placa / Cliente: ${placa}`, 20, y); y += 6;
+
+  const detalleLines = doc.splitTextToSize(`Trabajo realizado: ${detalle}`, 170);
+  doc.text(detalleLines, 20, y);
+  y += detalleLines.length * 6 + 1;
+
+  doc.text(`Mecánico: ${t.mecanico_nombre || 'Sin asignar'}`, 20, y); y += 6;
+  doc.text(`Fecha de registro: ${fecha}`, 20, y); y += 6;
+  doc.text(`Hora de ingreso: ${t.hora_ingreso || '-'}`, 20, y); y += 6;
+  doc.text(`Estado: ${estado.toUpperCase()}`, 20, y); y += 10;
+
+  doc.setFont('helvetica', 'bold');
+  doc.rect(20, y - 5, 170, 8);
+  doc.text('Repuesto', 25, y);
+  doc.text('Costo', 160, y);
+  y += 8;
+  doc.setFont('helvetica', 'normal');
+
+  if(items.length === 0) {
+    doc.rect(20, y - 5, 170, 8);
+    doc.text('Sin repuestos registrados', 25, y);
+    y += 8;
+  } else {
+    items.forEach(it => {
+      if (y > 265) { doc.addPage(); y = 20; }
+      const lines = doc.splitTextToSize(it.detalle, 120);
+      const rowH = lines.length * 6 + 2;
+      doc.rect(20, y - 5, 170, rowH);
+      doc.text(lines, 25, y);
+      doc.text(`Bs ${it.precio.toFixed(2)}`, 160, y);
+      y += rowH;
+    });
+  }
+
+  if (y > 255) { doc.addPage(); y = 20; }
+  y += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('Total Repuestos:', 20, y);
+  doc.text(`Bs ${totalRepuestos.toFixed(2)}`, 160, y);
+  y += 7;
+  doc.text('Costo Mano de Obra:', 20, y);
+  doc.text(`Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}`, 160, y);
+  y += 7;
+  doc.line(20, y - 5, 190, y - 5);
+  doc.text('TOTAL GENERAL:', 20, y);
+  doc.text(`Bs ${parseFloat(t.total || 0).toFixed(2)}`, 160, y);
+
+  doc.save(`orden_${t.id}_${Date.now()}.pdf`);
+}
+
+function imprimirDetalleOrden(id) {
+  const t = trabajosCache.find(tr => String(tr.id) === String(id))
+  if(!t) return
+
+  const sep = (t.orden_trabajo || '').indexOf(' | ')
+  const placa = sep !== -1 ? t.orden_trabajo.slice(0, sep) : '-'
+  const detalle = sep !== -1 ? t.orden_trabajo.slice(sep + 3) : t.orden_trabajo
+  const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'
+  const estado = t.estado || 'pendiente'
+  const { items, total: totalRepuestos } = parseRepuestos(t.repuestos_cambiados)
+
+  const filasRepuestos = items.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;">Sin repuestos registrados</td></tr>'
+    : items.map(it => `<tr><td>${it.detalle}</td><td>Bs ${it.precio.toFixed(2)}</td></tr>`).join('')
+
+  const ventana = window.open('', '_blank')
+  ventana.document.write(`
+    <html>
+    <head>
+      <title>Orden ${t.id} - Taller MORA</title>
+      <style>
+        body { font-family: Arial, sans-serif; color: #111; padding: 30px; }
+        h1 { color: #2196F3; margin-bottom: 0; }
+        p.sub { color: #555; margin-top: 2px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #999; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f0f0f0; }
+        .totales td { border: none; padding: 4px 8px; }
+      </style>
+    </head>
+    <body>
+      <h1>TALLER DE MOTOS - MORA</h1>
+      <p class="sub">Plataforma creada y diseñada por ADROW-CONSULTORES-SRL</p>
+      <hr>
+      <p><strong>Orden N°:</strong> ${t.id}</p>
+      <p><strong>Placa / Cliente:</strong> ${placa}</p>
+      <p><strong>Trabajo realizado:</strong> ${detalle}</p>
+      <p><strong>Mecánico:</strong> ${t.mecanico_nombre || 'Sin asignar'}</p>
+      <p><strong>Fecha de registro:</strong> ${fecha} &nbsp;|&nbsp; <strong>Hora de ingreso:</strong> ${t.hora_ingreso || '-'}</p>
+      <p><strong>Estado:</strong> ${estado.toUpperCase()}</p>
+      <table>
+        <thead><tr><th>Repuesto</th><th>Costo</th></tr></thead>
+        <tbody>${filasRepuestos}</tbody>
+      </table>
+      <table class="totales" style="margin-top: 10px;">
+        <tr><td style="text-align:right; width: 80%;"><strong>Total Repuestos:</strong></td><td>Bs ${totalRepuestos.toFixed(2)}</td></tr>
+        <tr><td style="text-align:right;"><strong>Costo Mano de Obra:</strong></td><td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td></tr>
+        <tr><td style="text-align:right; border-top: 2px solid #333;"><strong>TOTAL GENERAL:</strong></td><td style="border-top: 2px solid #333;"><strong>Bs ${parseFloat(t.total || 0).toFixed(2)}</strong></td></tr>
+      </table>
+    </body>
+    </html>
+  `)
+  ventana.document.close()
+  ventana.focus()
+  setTimeout(() => { ventana.print() }, 300)
 }
 
 function generarHTMLReporteDetallado(datos, totalRepuestos) {
