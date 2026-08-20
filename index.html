@@ -35,11 +35,21 @@ td {padding: 8px; border: 1px solid #444; text-align: center}
 .tabla-wrap table {margin-top: 0;}
 .tabla-wrap th {position: sticky; top: 0; z-index: 2;}
 .btn-volver-fijo {position: sticky; bottom: 0; width: 100%; margin-top: 15px; box-shadow: 0 -4px 10px rgba(0,0,0,0.4);}
+.modal-overlay {position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; z-index:1000;}
+.modal-overlay.activo {display: flex;}
+.modal-content {background:#2a2a2a; padding:20px 25px; border-radius:8px; max-width:520px; width:90%; max-height:85vh; overflow:auto; border: 1px solid #444;}
+.modal-content table {font-size: 13px;}
+.modal-cerrar {float: right; background: #555; padding: 4px 10px; font-size: 13px;}
+tr.fila-orden {cursor: pointer;}
+tr.fila-orden:hover {background: #333;}
 </style>
 </head>
 <body>
 <div id="app" class="container"></div>
 <div id="snack" class="snack"></div>
+<div id="modalDetalleOrden" class="modal-overlay" onclick="cerrarDetalleOrden(event)">
+  <div class="modal-content" onclick="event.stopPropagation()" id="modalDetalleContenido"></div>
+</div>
 
 <script>
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlnogmj.supabase.co'
@@ -53,6 +63,7 @@ let fechaTextoActual = ''
 let mecanicosCache = []
 let usuarioLogueado = ''
 let idTrabajoEdicion = null
+let trabajosCache = []
 
 function mostrarAviso(mensaje) {
   const snack = document.getElementById('snack')
@@ -176,15 +187,11 @@ async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
 }
 
 async function cambiarEstadoTrabajo(id) {
-  const btn = event.target
-  const estadoActual = btn.dataset.estado || 'pendiente'
-  const nuevoEstado = estadoActual === 'pagado'? 'pendiente' : 'pagado'
-
-  const {error} = await supabaseClient.rpc('cambiar_estado_trabajo', {p_id: id, p_nuevo_estado: nuevoEstado})
+  const {error} = await supabaseClient.rpc('cambiar_estado_trabajo', {p_id: id, p_nuevo_estado: 'pagado'})
   if(!error) {
-    mostrarAviso(`Orden marcada como ${nuevoEstado.toUpperCase()} ✅`)
+    mostrarAviso('Orden marcada como PAGADO ✅')
     if(idTrabajoEdicion === id) cancelarEdicion();
-    document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+    document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos(document.getElementById('buscadorHistorial')?.value)
   } else {
     mostrarAviso('Error al cambiar estado')
     console.error(error)
@@ -201,19 +208,34 @@ function formatearRepuestosHistorial(repuestosStr) {
   </ol>`;
 }
 
-async function cargarTablaTrabajos() {
+async function cargarTablaTrabajos(filtro = '') {
   const trabajos = await obtenerTrabajos()
+  trabajosCache = trabajos
+  return renderFilasTrabajos(filtrarTrabajosPorTexto(trabajos, filtro))
+}
+
+function filtrarTrabajosPorTexto(lista, filtro) {
+  const q = (filtro || '').trim().toLowerCase()
+  if(!q) return lista
+  return lista.filter(t => (t.orden_trabajo || '').toLowerCase().includes(q))
+}
+
+function buscarEnHistorial() {
+  const q = document.getElementById('buscadorHistorial').value
+  document.getElementById('tablaTrabajos').innerHTML = renderFilasTrabajos(filtrarTrabajosPorTexto(trabajosCache, q))
+}
+
+function renderFilasTrabajos(trabajos) {
   return trabajos.map(t => {
     const estado = t.estado || 'pendiente'
     const claseEstado = estado === 'pagado'? 'estado-pagado' : 'estado-pendiente'
-    const claseBoton = estado === 'pagado'? 'btn-pendiente' : 'btn-pagado'
-    const textoBoton = estado === 'pagado'? 'Marcar Pendiente' : 'Marcar Pagado'
-    
-    const botonEditar = estado === 'pendiente' ? 
-      `<button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id}, '${escapeJsonStr(t.hora_ingreso)}')">Editar</button>` : '';
+
+    const acciones = estado === 'pendiente' ?
+      `<button class="btn-pagado" onclick="cambiarEstadoTrabajo(${t.id})">Marcar Pagado</button>
+       <button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id}, '${escapeJsonStr(t.hora_ingreso)}')">Editar</button>` : '';
 
     return `
-    <tr>
+    <tr class="fila-orden" ondblclick="verDetalleOrden(${t.id})">
       <td>${t.created_at? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
       <td>${t.hora_ingreso || '-'}</td>
       <td>${t.mecanico_nombre || 'Sin asignar'}</td>
@@ -224,9 +246,8 @@ async function cargarTablaTrabajos() {
       <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
       <td class="${claseEstado}">${estado.toUpperCase()}</td>
       <td>
-        <div class="row" style="gap:5px;">
-          <button class="${claseBoton}" data-estado="${estado}" onclick="cambiarEstadoTrabajo(${t.id})">${textoBoton}</button>
-          ${botonEditar}
+        <div class="row" style="gap:5px;" ondblclick="event.stopPropagation()">
+          ${acciones}
         </div>
       </td>
     </tr>
@@ -460,7 +481,10 @@ async function mostrarTrabajos() {
       </div>
       
       <hr>
-      <h3>Historial de Órdenes</h3>
+      <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <h3 style="margin: 5px;">Historial de Órdenes</h3>
+        <input id="buscadorHistorial" placeholder="🔍 Buscar por placa, cliente, moto o trabajo..." style="width: 300px; margin: 5px;" oninput="buscarEnHistorial()">
+      </div>
       <div class="tabla-wrap">
         <table>
           <thead>
@@ -612,6 +636,49 @@ function parseRepuestos(repuestosStr) {
 
   const total = items.reduce((sum, item) => sum + item.precio, 0)
   return {items, total}
+}
+
+function verDetalleOrden(id) {
+  const t = trabajosCache.find(tr => String(tr.id) === String(id))
+  if(!t) return
+
+  const sep = (t.orden_trabajo || '').indexOf(' | ')
+  const placa = sep !== -1 ? t.orden_trabajo.slice(0, sep) : '-'
+  const detalle = sep !== -1 ? t.orden_trabajo.slice(sep + 3) : t.orden_trabajo
+
+  const {items, total: totalRepuestos} = parseRepuestos(t.repuestos_cambiados)
+  const filasRepuestos = items.length === 0
+    ? '<tr><td colspan="2" style="text-align:center; color:#aaa;">Sin repuestos registrados</td></tr>'
+    : items.map(it => `<tr><td>${it.detalle}</td><td>Bs ${it.precio.toFixed(2)}</td></tr>`).join('')
+
+  const estado = t.estado || 'pendiente'
+  const claseEstado = estado === 'pagado' ? 'estado-pagado' : 'estado-pendiente'
+  const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'
+
+  document.getElementById('modalDetalleContenido').innerHTML = `
+    <button class="modal-cerrar" onclick="cerrarDetalleOrden()">✕ Cerrar</button>
+    <h3 style="text-align:left; margin-top: 5px;">Detalle de la Orden</h3>
+    <p><strong>Placa / Cliente:</strong> ${placa}</p>
+    <p><strong>Trabajo realizado:</strong> ${detalle}</p>
+    <p><strong>Mecánico:</strong> ${t.mecanico_nombre || 'Sin asignar'}</p>
+    <p><strong>Fecha de registro:</strong> ${fecha} &nbsp;|&nbsp; <strong>Hora de ingreso:</strong> ${t.hora_ingreso || '-'}</p>
+    <p><strong>Estado:</strong> <span class="${claseEstado}">${estado.toUpperCase()}</span></p>
+    <table>
+      <thead><tr><th>Repuesto</th><th>Costo</th></tr></thead>
+      <tbody>
+        ${filasRepuestos}
+        <tr><td style="text-align:right;"><strong>Total Repuestos:</strong></td><td><strong>Bs ${totalRepuestos.toFixed(2)}</strong></td></tr>
+        <tr><td style="text-align:right;"><strong>Costo Mano de Obra:</strong></td><td><strong>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</strong></td></tr>
+        <tr><td style="text-align:right;"><strong>TOTAL GENERAL:</strong></td><td><strong>Bs ${parseFloat(t.total || 0).toFixed(2)}</strong></td></tr>
+      </tbody>
+    </table>
+  `
+  document.getElementById('modalDetalleOrden').classList.add('activo')
+}
+
+function cerrarDetalleOrden(event) {
+  if(event && event.target !== event.currentTarget) return
+  document.getElementById('modalDetalleOrden').classList.remove('activo')
 }
 
 function generarHTMLReporteDetallado(datos, totalRepuestos) {
