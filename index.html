@@ -58,6 +58,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
   
 let datosReporteActuales = []
 let tipoReporteActual = 'dia'
+let rangoActual = null
 let mecanicoNombreActual = 'Todos'
 let fechaTextoActual = ''
 let mecanicosCache = []
@@ -167,19 +168,32 @@ async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repues
   return !error
 }
 
-async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
+async function obtenerTrabajos(filtroFecha = null, mecanico_id = null, rango = null, soloPagados = false) {
   let {data} = await supabaseClient.rpc('obtener_trabajos')
   if(!data) return []
 
   if(mecanico_id) data = data.filter(t => String(t.mecanico_id) === String(mecanico_id))
 
-  if(filtroFecha) {
+  if(soloPagados) {
+    data = data.filter(t => t.estado === 'pagado')
+    data = data.filter(t => {
+      const ref = t.fecha_pago ? new Date(t.fecha_pago) : new Date(t.created_at)
+      const hoy = new Date()
+      if(filtroFecha === 'dia') return ref.toDateString() === hoy.toDateString()
+      if(filtroFecha === 'semana') return ref >= new Date(hoy.getTime() - 7*24*60*60*1000)
+      if(filtroFecha === 'rango' && rango && rango.desde && rango.hasta) {
+        const desde = new Date(rango.desde + 'T00:00:00')
+        const hasta = new Date(rango.hasta + 'T23:59:59')
+        return ref >= desde && ref <= hasta
+      }
+      return true
+    })
+  } else if(filtroFecha) {
     const hoy = new Date()
     data = data.filter(t => {
       const fecha = new Date(t.created_at)
       if(filtroFecha === 'dia') return fecha.toDateString() === hoy.toDateString()
       if(filtroFecha === 'semana') return fecha >= new Date(hoy.getTime() - 7*24*60*60*1000)
-      if(filtroFecha === 'mes') return fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear()
       return true
     })
   }
@@ -591,13 +605,13 @@ async function guardarTrabajo() {
   }
 }
 
-async function reporteGanancias(tipo, mecanico_id = null) {
-  const trabajos = await obtenerTrabajos(tipo, mecanico_id)
+async function reporteGanancias(tipo, mecanico_id = null, rango = null) {
+  const trabajos = await obtenerTrabajos(tipo, mecanico_id, rango, true)
   const hoy = new Date()
   let fecha_texto = 'Todos'
   if(tipo === 'dia') fecha_texto = hoy.toLocaleDateString()
   if(tipo === 'semana') fecha_texto = `${new Date(hoy.getTime() - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
-  if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
+  if(tipo === 'rango' && rango) fecha_texto = `${formatearFechaCorta(rango.desde)} al ${formatearFechaCorta(rango.hasta)}`
 
   const agrupado = {}
   trabajos.forEach(t => {
@@ -607,6 +621,7 @@ async function reporteGanancias(tipo, mecanico_id = null) {
       orden: t.orden_trabajo,
       repuestos: t.repuestos_cambiados,
       fecha: new Date(t.created_at).toLocaleDateString(),
+      fechaPago: t.fecha_pago ? new Date(t.fecha_pago).toLocaleDateString() : '-',
       ganancia: parseFloat(t.costo_trabajo || 0),
       estado: t.estado
     })
@@ -614,6 +629,16 @@ async function reporteGanancias(tipo, mecanico_id = null) {
   })
 
   return [Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia]), fecha_texto]
+}
+
+function formatearFechaCorta(iso) {
+  if(!iso) return ''
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function etiquetaTipoReporte(tipo) {
+  return {dia: 'Hoy', semana: 'Última semana', rango: 'Rango de fechas'}[tipo] || tipo
 }
 
 function parseRepuestos(repuestosStr) {
@@ -829,32 +854,36 @@ function imprimirDetalleOrden(id) {
   setTimeout(() => { ventana.print() }, 300)
 }
 
-function generarHTMLReporteDetallado(datos, totalRepuestos) {
+function generarHTMLReporteDetallado(datos, totalRepuestos, mostrarMecanico) {
     let indexGlobal = 1;
     const filas = datos.map(d => {
+        const nombre = d[0];
         return d[1].map(t => {
             const { total } = parseRepuestos(t.repuestos);
             return `
                 <tr>
                     <td>${indexGlobal++}</td>
+                    ${mostrarMecanico ? `<td>${nombre}</td>` : ''}
                     <td>${t.orden}</td>
-                    <td>${t.estado === 'pagado' ? 'PAGADO' : 'PENDIENTE'}</td>
+                    <td>${t.fechaPago || '-'}</td>
                     <td>${t.repuestos !== 'S/R' ? t.repuestos.replace(/\n/g, '<br>') : '-'}</td>
                     <td>Bs ${total.toFixed(2)}</td>
                 </tr>`;
         }).join('');
     }).join('');
 
+    const colspanTotal = mostrarMecanico ? 5 : 4;
+
     return `
         <table style="width: 100%; border-collapse: collapse; margin-top: 15px; color: #fff;">
             <thead>
                 <tr style="background: #2196F3;">
-                    <th>N°</th><th>Orden</th><th>Estado</th><th>Repuestos</th><th>Costo Rep.</th>
+                    <th>N°</th>${mostrarMecanico ? '<th>Mecánico</th>' : ''}<th>Orden</th><th>Fecha Pago</th><th>Repuestos</th><th>Costo Rep.</th>
                 </tr>
             </thead>
             <tbody>
                 ${filas}
-                <tr><td colspan="4" style="text-align:right"><strong>Total Repuestos:</strong></td><td><strong>Bs ${totalRepuestos.toFixed(2)}</strong></td></tr>
+                <tr><td colspan="${colspanTotal}" style="text-align:right"><strong>Total Repuestos:</strong></td><td><strong>Bs ${totalRepuestos.toFixed(2)}</strong></td></tr>
             </tbody>
         </table>`;
 }
@@ -883,7 +912,7 @@ async function generarPDF() {
   doc.setFontSize(9);
   doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26);
   doc.setFontSize(11);
-  doc.text(`Período: ${tipoReporteActual || 'N/A'} - ${fechaTextoActual || ''}`, 20, 34);
+  doc.text(`Período: ${etiquetaTipoReporte(tipoReporteActual)} - ${fechaTextoActual || ''}`, 20, 34);
   doc.text(`Mecánico: ${mecanicoNombreActual || 'Todos'}`, 20, 39);
   doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44);
 
@@ -975,39 +1004,49 @@ function urlToBase64(url) {
   })
 }
 
-async function cargarReporte(tipo) {
+async function cargarReporte(tipo, rango = null) {
     tipoReporteActual = tipo;
+    rangoActual = tipo === 'rango' ? rango : null;
+
     const select = document.getElementById('filtroMec');
-    const buscador = document.getElementById('buscadorOrden')?.value.toLowerCase() || '';
     const mecId = select?.value;
+    const mostrarMecanico = !mecId || mecId === 'todos';
+    mecanicoNombreActual = mostrarMecanico ? 'Todos' : (mecanicosCache.find(m => String(m.id) === String(mecId))?.nombre || 'Todos');
 
-    const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos' ? null : mecId);
+    const [datos, fechaTexto] = await reporteGanancias(tipo, mostrarMecanico ? null : mecId, rango);
 
-    // Filtrar los datos por número de orden
-    const datosFiltrados = datos.map(d => {
-        const trabajosFiltrados = d[1].filter(t => t.orden.toLowerCase().includes(buscador));
-        const gananciaFiltrada = trabajosFiltrados.reduce((sum, t) => sum + t.ganancia, 0);
-        return [d[0], trabajosFiltrados, gananciaFiltrada];
-    }).filter(d => d[1].length > 0);
-
-    datosReporteActuales = datosFiltrados;
+    datosReporteActuales = datos;
     fechaTextoActual = fechaTexto;
 
-    document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`;
-    const total = datosFiltrados.reduce((sum, d) => sum + (d[2] || 0), 0);
+    document.getElementById('fechaLabel').innerText = `Período: ${etiquetaTipoReporte(tipo)} — ${fechaTexto}`;
+    const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0);
     document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`;
 
-    const tbody = document.getElementById('tablaReporte');
     let totalRepuestosGlobal = 0;
-    datosFiltrados.forEach(d => {
+    datos.forEach(d => {
         d[1].forEach(t => {
             totalRepuestosGlobal += parseRepuestos(t.repuestos).total;
         });
     });
 
-    tbody.innerHTML = datosFiltrados.length > 0 
-        ? generarHTMLReporteDetallado(datosFiltrados, totalRepuestosGlobal) 
-        : '<tr><td colspan="5">Sin resultados para esta búsqueda</td></tr>';
+    document.getElementById('contenedorReporte').innerHTML = datos.length > 0
+        ? generarHTMLReporteDetallado(datos, totalRepuestosGlobal, mostrarMecanico)
+        : '<p style="text-align:center; color: grey; padding: 15px;">Sin órdenes pagadas para este período</p>';
+}
+
+function aplicarRangoReporte() {
+    const desde = document.getElementById('fechaDesde').value
+    const hasta = document.getElementById('fechaHasta').value
+    if(!desde || !hasta) return mostrarAviso('Selecciona ambas fechas')
+
+    const d1 = new Date(desde + 'T00:00:00')
+    const d2 = new Date(hasta + 'T00:00:00')
+    if(d1 > d2) return mostrarAviso('La fecha "Desde" no puede ser mayor que "Hasta"')
+
+    const diffDias = Math.round((d2 - d1) / (1000*60*60*24)) + 1
+    if(diffDias > 45) return mostrarAviso('El intervalo no puede superar 45 días')
+
+    cargarReporte('rango', {desde, hasta})
 }
   
 async function mostrarReportes() {
@@ -1017,27 +1056,33 @@ async function mostrarReportes() {
       <h2 style="font-size: 30px; margin-bottom: 0;">Control Taller MORA</h2>
       <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3>Reportes de Ganancias</h3>
-      <p style="color: grey">Detalle de trabajos por período - 🟢 Pagado / 🟠 Pendiente</p>
-      <select id="filtroMec" onchange="cargarReporte(tipoReporteActual)" style="width: 300px">
+      <p style="color: grey">Solo se muestran órdenes con estado PAGADO</p>
+      <select id="filtroMec" onchange="cargarReporte(tipoReporteActual, rangoActual)" style="width: 300px">
         <option value="todos">Todos</option>
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
-      <input id="buscadorOrden" placeholder="Buscar por N° de orden..." 
-            oninput="cargarReporte(tipoReporteActual)" 
-            style="width: 300px; display:block; margin: 5px auto; padding: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 4px;">
       <div class="row">
         <button onclick="cargarReporte('dia')">Hoy</button>
         <button onclick="cargarReporte('semana')">Semana</button>
-        <button onclick="cargarReporte('mes')">Mes</button>
       </div>
+      <div class="row" style="justify-content:center; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px;">
+        <label style="font-size:12px; color:grey;">Desde
+          <input type="date" id="fechaDesde" style="margin-left:4px;">
+        </label>
+        <label style="font-size:12px; color:grey;">Hasta
+          <input type="date" id="fechaHasta" style="margin-left:4px;">
+        </label>
+        <button onclick="aplicarRangoReporte()">📅 Buscar por rango</button>
+      </div>
+      <p style="font-size:11px; color:grey; margin-top:4px;">Puedes elegir fechas anteriores. Intervalo máximo: 45 días.</p>
       <p id="fechaLabel">Período: </p>
       <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: #4caf50">Ganancia Mano de Obra: Bs 0.00</p>
-      <button onclick="generarPDF()">📄 Exportar PDF</button>
       <hr>
-      <table>
-        <tr><th>N°</th><th>Orden</th><th>Estado</th><th>Repuestos</th><th>Costo Rep.</th></tr>
-        <tbody id="tablaReporte"></tbody>
-      </table>
+      <h4 style="text-align:left; color: grey; margin-bottom: 5px;">Vista previa del reporte</h4>
+      <div class="tabla-wrap" id="contenedorReporte"></div>
+      <div class="row" style="justify-content:center; margin-top:15px;">
+        <button onclick="generarPDF()">📄 Exportar PDF</button>
+      </div>
       <button onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
