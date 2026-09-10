@@ -72,7 +72,7 @@ td {padding: 8px; border: 1px solid #444; text-align: center; background: #2a2a2
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlnogmj.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6eGh2dnhqZmVkcXZ0bG5vZ21qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODczMzcsImV4cCI6MjA5Njk2MzMzN30.nlIfHI0aEyqssQNpb40Ss3lQEMt6ujI9M-q8zM_Nakw'
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-  
+
 let datosReporteActuales = []
 let tipoReporteActual = 'dia'
 let mecanicoNombreActual = 'Todos'
@@ -90,21 +90,50 @@ function mostrarAviso(mensaje) {
 
 async function crearTablasTaller() {
   try {
-    const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
-    if(!data || data.length === 0) {
-      await supabaseClient.from('usuarios').insert([{usuario: 'admin', password: '1234'}])
+    const { data, error } = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
+    if (error) {
+      console.error('Error al verificar admin inicial:', error)
+      return
     }
-  } catch(e) {console.error(e)}
+    if (!data || data.length === 0) {
+      await supabaseClient.from('usuarios').insert([{ usuario: 'admin', password: '1234' }])
+    }
+  } catch (e) {
+    console.error('Error inicializando tablas:', e)
+  }
 }
 
 async function verificarUsuario(usuario, password) {
-  const {data} = await supabaseClient.from('usuarios').select('*').eq('usuario', usuario).eq('password', password)
-  return data && data.length > 0
+  try {
+    const { data, error } = await supabaseClient
+      .from('usuarios')
+      .select('*')
+      .eq('usuario', usuario.trim())
+      .eq('password', password.trim())
+
+    if (error) {
+      console.error('Error al consultar usuario en Supabase:', error)
+      return false
+    }
+
+    return data && data.length > 0
+  } catch (err) {
+    console.error('Error de red o ejecucion al verificar usuario:', err)
+    return false
+  }
 }
 
 async function crearUsuario(usuario, password) {
-  const {error} = await supabaseClient.from('usuarios').insert([{usuario, password}])
-  return !error
+  try {
+    const { error } = await supabaseClient.from('usuarios').insert([
+      { usuario: usuario.trim(), password: password.trim() }
+    ])
+    if(error) console.error(error)
+    return !error
+  } catch(e) {
+    console.error(e)
+    return false
+  }
 }
 
 async function insertarMecanico(nombre, telefono, especialidad) {
@@ -197,7 +226,6 @@ async function cargarTablaTrabajos() {
     const fechaObj = t.created_at ? new Date(t.created_at) : null;
     const fechaTexto = fechaObj ? fechaObj.toLocaleDateString() : '-';
     
-    // Si la fecha cambia con respecto a la orden anterior, inserta la línea divisora
     if (fechaTexto !== ultimaFecha && ultimaFecha !== '') {
       htmlResult += `
         <tr class="fila-separador-fecha">
@@ -305,13 +333,31 @@ function mostrarLogin() {
 }
 
 async function iniciarSesion() {
-  const u = document.getElementById('usuario').value.trim()
-  const p = document.getElementById('password').value.trim()
-  if(await verificarUsuario(u, p)) {
-    usuarioLogueado = u;
+  const uInput = document.getElementById('usuario')
+  const pInput = document.getElementById('password')
+  const msg = document.getElementById('mensajeLogin')
+
+  if(!uInput || !pInput) return;
+
+  const u = uInput.value.trim()
+  const p = pInput.value.trim()
+
+  if(!u || !p) {
+    msg.innerText = '⚠️ Ingrese usuario y contraseña'
+    return
+  }
+
+  msg.innerText = 'Cargando...'
+  msg.style.color = '#2196F3'
+
+  const esValido = await verificarUsuario(u, p)
+
+  if(esValido) {
+    usuarioLogueado = u
     mostrarApp()
   } else {
-    document.getElementById('mensajeLogin').innerText = '❌ Usuario o contraseña incorrectos'
+    msg.style.color = 'red'
+    msg.innerText = '❌ Usuario o contraseña incorrectos'
   }
 }
 
@@ -358,7 +404,7 @@ async function ejecutarRegistroAdmin() {
     document.getElementById('new_usuario').value = ''
     document.getElementById('new_password').value = ''
   } else {
-    msg.innerText = '❌ El usuario ya existe'; msg.style.color = 'red'
+    msg.innerText = '❌ El usuario ya existe o hubo un error'; msg.style.color = 'red'
   }
 }
 
