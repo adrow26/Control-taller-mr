@@ -21,40 +21,9 @@ button:hover {background: #1976D2}
 .btn-pendiente:hover {background: #f57c00}
 .btn-editar {background: #9c27b0}
 .btn-editar:hover {background: #7b1fa2}
-
-.tabla-contenedor {
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid #444;
-  margin-top: 15px;
-  border-radius: 4px;
-}
-table {width: 100%; border-collapse: collapse; font-size: 14px}
-th {
-  background: #2196F3; 
-  color: white; 
-  padding: 10px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-td {padding: 8px; border: 1px solid #444; text-align: center; background: #2a2a2a;}
-
-/* Línea separadora limpia por fecha */
-.fila-separador-fecha {
-  background: #111 !important;
-}
-.fila-separador-fecha td {
-  background: #1b2838 !important;
-  color: #00bcd4;
-  font-weight: bold;
-  text-align: center;
-  padding: 6px;
-  border-top: 2px solid #00bcd4;
-  border-bottom: 2px solid #00bcd4;
-  letter-spacing: 1px;
-}
-
+table {width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px}
+th {background: #2196F3; color: white; padding: 10px}
+td {padding: 8px; border: 1px solid #444; text-align: center}
 .snack {position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; padding: 12px 20px; border-radius: 4px; display: none; z-index: 999}
 .row {display: flex; gap: 10px; justify-content: center; flex-wrap: wrap}
 .col {display: flex; flex-direction: column; align-items: center; gap: 15px}
@@ -62,24 +31,42 @@ td {padding: 8px; border: 1px solid #444; text-align: center; background: #2a2a2
 .estado-pendiente {color: #ff9800; font-weight: bold}
 .repuestos-grid {display: grid; grid-template-columns: 2fr 1fr; gap: 5px; width: 300px; max-height: 120px; overflow-y: auto; background: #222; padding: 5px; border-radius: 4px; border: 1px solid #555;}
 .repuestos-lista-historial {text-align: left; margin: 0; padding-left: 20px; font-size: 12px;}
+.tabla-wrap {overflow: auto; max-height: 480px; margin-top: 15px; border: 1px solid #444; border-radius: 4px;}
+.tabla-wrap table {margin-top: 0;}
+.tabla-wrap th {position: sticky; top: 0; z-index: 2;}
+.btn-volver-fijo {position: sticky; bottom: 0; width: 100%; margin-top: 15px; box-shadow: 0 -4px 10px rgba(0,0,0,0.4);}
+.modal-overlay {position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; z-index:1000;}
+.modal-overlay.activo {display: flex;}
+.modal-content {background:#2a2a2a; padding:20px 25px; border-radius:8px; max-width:520px; width:90%; max-height:85vh; overflow:auto; border: 1px solid #444;}
+.modal-content table {font-size: 13px;}
+.modal-cerrar {float: right; background: #555; padding: 4px 10px; font-size: 13px;}
+tr.fila-orden {cursor: pointer;}
+tr.fila-orden:hover {background: #333;}
+tr.fila-fecha-header {background: #333; font-weight: bold; color: #2196F3; font-size: 15px;}
+tr.fila-fecha-header td {text-align: left; padding: 8px 15px; border-top: 2px solid #2196F3; border-bottom: 2px solid #2196F3;}
 </style>
 </head>
 <body>
 <div id="app" class="container"></div>
 <div id="snack" class="snack"></div>
+<div id="modalDetalleOrden" class="modal-overlay" onclick="cerrarDetalleOrden(event)">
+  <div class="modal-content" onclick="event.stopPropagation()" id="modalDetalleContenido"></div>
+</div>
 
 <script>
 const SUPABASE_URL = 'https://hzxhvvxjfedqvtlnogmj.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_3o0hErCcAlIjR4vRCuM2yg_t_FJanBA'
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-
+  
 let datosReporteActuales = []
 let tipoReporteActual = 'dia'
+let rangoActual = null
 let mecanicoNombreActual = 'Todos'
 let fechaTextoActual = ''
 let mecanicosCache = []
 let usuarioLogueado = ''
 let idTrabajoEdicion = null
+let trabajosCache = []
 
 function mostrarAviso(mensaje) {
   const snack = document.getElementById('snack')
@@ -90,50 +77,64 @@ function mostrarAviso(mensaje) {
 
 async function crearTablasTaller() {
   try {
-    const { data, error } = await supabaseClient.from('usuarios').select('*').eq('usuario', 'admin')
-    if (error) {
-      console.error('Error al verificar admin inicial:', error)
-      return
+    const {data: detalles} = await supabaseClient.from('detalles_comunes').select('id')
+    if(detalles && detalles.length === 0) {
+      const listaBase = [
+        'Cambio de aceite y filtro',
+        'Revisión y ajuste de frenos',
+        'Cambio de pastillas de freno',
+        'Ajuste y engrase de cadena',
+        'Cambio de llanta/neumático',
+        'Revisión eléctrica general',
+        'Cambio de batería',
+        'Cambio de bujía',
+        'Lavado general y engrasado',
+        'Revisión de motor'
+      ]
+      await supabaseClient.from('detalles_comunes').insert(listaBase.map(d => ({detalle: d})))
     }
-    if (!data || data.length === 0) {
-      await supabaseClient.from('usuarios').insert([{ usuario: 'admin', password: '1234' }])
-    }
-  } catch (e) {
-    console.error('Error inicializando tablas:', e)
+  } catch(e) {console.error(e)}
+}
+
+async function obtenerDetallesComunes() {
+  try {
+    const {data} = await supabaseClient.from('detalles_comunes').select('detalle').order('detalle', {ascending: true})
+    return data || []
+  } catch(e) {
+    console.error(e)
+    return []
   }
+}
+
+async function llenarDatalistDetalles() {
+  const lista = await obtenerDetallesComunes()
+  const datalist = document.getElementById('listaDetalles')
+  if(datalist) {
+    datalist.innerHTML = lista.map(d => `<option value="${String(d.detalle).replace(/"/g, '&quot;')}"></option>`).join('')
+  }
+}
+
+async function guardarDetalleComunSiNuevo(detalle) {
+  const detalleNorm = detalle.trim()
+  if(!detalleNorm) return
+  try {
+    const {data} = await supabaseClient.from('detalles_comunes').select('id').ilike('detalle', detalleNorm)
+    if(!data || data.length === 0) {
+      await supabaseClient.from('detalles_comunes').insert([{detalle: detalleNorm}])
+    }
+  } catch(e) {console.error(e)}
 }
 
 async function verificarUsuario(usuario, password) {
-  try {
-    const { data, error } = await supabaseClient
-      .from('usuarios')
-      .select('*')
-      .eq('usuario', usuario.trim())
-      .eq('password', password.trim())
-
-    if (error) {
-      console.error('Error al consultar usuario en Supabase:', error)
-      return false
-    }
-
-    return data && data.length > 0
-  } catch (err) {
-    console.error('Error de red o ejecucion al verificar usuario:', err)
-    return false
-  }
+  const {data, error} = await supabaseClient.rpc('verificar_login', {p_usuario: usuario, p_password: password})
+  if(error) { console.error(error); return false }
+  return data === true
 }
 
 async function crearUsuario(usuario, password) {
-  try {
-    const { error } = await supabaseClient.from('usuarios').insert([
-      { usuario: usuario.trim(), password: password.trim() }
-    ])
-    if(error) console.error(error)
-    return !error
-  } catch(e) {
-    console.error(e)
-    return false
-  }
+  const {data, error} = await supabaseClient.rpc('crear_usuario', {p_usuario: usuario, p_password: password})
+  if(error) { console.error(error); return false }
+  return data === true
 }
 
 async function insertarMecanico(nombre, telefono, especialidad) {
@@ -145,46 +146,56 @@ async function obtenerMecanicos() {
   return data || []
 }
 
-async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
-  const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
-  await supabaseClient.from('trabajos').insert([{
-    mecanico_id,
-    orden_trabajo,
-    repuestos_cambiados: repuestos,
-    costo_repuesto: parseFloat(costo_rep || 0),
-    costo_trabajo: parseFloat(costo_trab || 0),
-    total,
-    estado: 'pendiente'
-  }])
+async function insertarTrabajo(mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab, hora_ingreso) {
+  await supabaseClient.rpc('insertar_trabajo', {
+    p_mecanico_id: mecanico_id,
+    p_orden_trabajo: orden_trabajo,
+    p_repuestos: repuestos,
+    p_costo_rep: parseFloat(costo_rep || 0),
+    p_costo_trab: parseFloat(costo_trab || 0),
+    p_hora_ingreso: hora_ingreso || null
+  })
 }
 
-async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab) {
-  const total = parseFloat(costo_rep || 0) + parseFloat(costo_trab || 0)
-  const {error} = await supabaseClient.from('trabajos').update({
-    mecanico_id,
-    orden_trabajo,
-    repuestos_cambiados: repuestos,
-    costo_repuesto: parseFloat(costo_rep || 0),
-    costo_trabajo: parseFloat(costo_trab || 0),
-    total
-  }).eq('id', id)
+async function actualizarTrabajoExistente(id, mecanico_id, orden_trabajo, repuestos, costo_rep, costo_trab, hora_ingreso) {
+  const {error} = await supabaseClient.rpc('actualizar_trabajo', {
+    p_id: id,
+    p_mecanico_id: mecanico_id,
+    p_orden_trabajo: orden_trabajo,
+    p_repuestos: repuestos,
+    p_costo_rep: parseFloat(costo_rep || 0),
+    p_costo_trab: parseFloat(costo_trab || 0),
+    p_hora_ingreso: hora_ingreso || null
+  })
   return !error
 }
 
-async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
-  let query = supabaseClient.from('trabajos').select('*, mecanicos(nombre)').order('created_at', {ascending: false})
-  if(mecanico_id) query = query.eq('mecanico_id', mecanico_id)
-
-  let {data} = await query
+async function obtenerTrabajos(filtroFecha = null, mecanico_id = null, rango = null, soloPagados = false) {
+  let {data} = await supabaseClient.rpc('obtener_trabajos')
   if(!data) return []
 
-  if(filtroFecha) {
+  if(mecanico_id) data = data.filter(t => String(t.mecanico_id) === String(mecanico_id))
+
+  if(soloPagados) {
+    data = data.filter(t => t.estado === 'pagado')
+    data = data.filter(t => {
+      const ref = t.fecha_pago ? new Date(t.fecha_pago) : new Date(t.created_at)
+      const hoy = new Date()
+      if(filtroFecha === 'dia') return ref.toDateString() === hoy.toDateString()
+      if(filtroFecha === 'semana') return ref >= new Date(hoy.getTime() - 7*24*60*60*1000)
+      if(filtroFecha === 'rango' && rango && rango.desde && rango.hasta) {
+        const desde = new Date(rango.desde + 'T00:00:00')
+        const hasta = new Date(rango.hasta + 'T23:59:59')
+        return ref >= desde && ref <= hasta
+      }
+      return true
+    })
+  } else if(filtroFecha) {
     const hoy = new Date()
     data = data.filter(t => {
       const fecha = new Date(t.created_at)
       if(filtroFecha === 'dia') return fecha.toDateString() === hoy.toDateString()
       if(filtroFecha === 'semana') return fecha >= new Date(hoy.getTime() - 7*24*60*60*1000)
-      if(filtroFecha === 'mes') return fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear()
       return true
     })
   }
@@ -192,15 +203,11 @@ async function obtenerTrabajos(filtroFecha = null, mecanico_id = null) {
 }
 
 async function cambiarEstadoTrabajo(id) {
-  const btn = event.target
-  const estadoActual = btn.dataset.estado || 'pendiente'
-  const nuevoEstado = estadoActual === 'pagado'? 'pendiente' : 'pagado'
-
-  const {error} = await supabaseClient.from('trabajos').update({estado: nuevoEstado}).eq('id', id)
+  const {error} = await supabaseClient.rpc('cambiar_estado_trabajo', {p_id: id, p_nuevo_estado: 'pagado'})
   if(!error) {
-    mostrarAviso(`Orden marcada como ${nuevoEstado.toUpperCase()} ✅`)
+    mostrarAviso('Orden marcada como PAGADO ✅')
     if(idTrabajoEdicion === id) cancelarEdicion();
-    document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+    document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos(document.getElementById('buscadorHistorial')?.value)
   } else {
     mostrarAviso('Error al cambiar estado')
     console.error(error)
@@ -217,36 +224,54 @@ function formatearRepuestosHistorial(repuestosStr) {
   </ol>`;
 }
 
-async function cargarTablaTrabajos() {
+async function cargarTablaTrabajos(filtro = '') {
   const trabajos = await obtenerTrabajos()
-  let htmlResult = ''
-  let ultimaFecha = ''
+  trabajosCache = trabajos
+  return renderFilasTrabajos(filtrarTrabajosPorTexto(trabajos, filtro))
+}
 
-  trabajos.forEach(t => {
+function filtrarTrabajosPorTexto(lista, filtro) {
+  const q = (filtro || '').trim().toLowerCase()
+  if(!q) return lista
+  return lista.filter(t => (t.orden_trabajo || '').toLowerCase().includes(q))
+}
+
+function buscarEnHistorial() {
+  const q = document.getElementById('buscadorHistorial').value
+  document.getElementById('tablaTrabajos').innerHTML = renderFilasTrabajos(filtrarTrabajosPorTexto(trabajosCache, q))
+}
+
+function renderFilasTrabajos(trabajos) {
+  let html = '';
+  let ultimaFecha = '';
+
+  const trabajosOrdenados = [...trabajos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  trabajosOrdenados.forEach(t => {
     const fechaObj = t.created_at ? new Date(t.created_at) : null;
-    const fechaTexto = fechaObj ? fechaObj.toLocaleDateString() : '-';
-    
-    if (fechaTexto !== ultimaFecha && ultimaFecha !== '') {
-      htmlResult += `
-        <tr class="fila-separador-fecha">
-          <td colspan="9">📅 --- ${fechaTexto} ---</td>
+    const fechaTexto = fechaObj ? fechaObj.toLocaleDateString() : 'Sin Fecha';
+
+    if (fechaTexto !== ultimaFecha) {
+      html += `
+        <tr class="fila-fecha-header">
+          <td colspan="10">📅 ${fechaTexto}</td>
         </tr>
       `;
+      ultimaFecha = fechaTexto;
     }
-    ultimaFecha = fechaTexto;
 
-    const estado = t.estado || 'pendiente'
-    const claseEstado = estado === 'pagado'? 'estado-pagado' : 'estado-pendiente'
-    const claseBoton = estado === 'pagado'? 'btn-pendiente' : 'btn-pagado'
-    const textoBoton = estado === 'pagado'? 'Marcar Pendiente' : 'Marcar Pagado'
-    
-    const botonEditar = estado === 'pendiente' ? 
-      `<button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id})">Editar</button>` : '';
+    const estado = t.estado || 'pendiente';
+    const claseEstado = estado === 'pagado' ? 'estado-pagado' : 'estado-pendiente';
 
-    htmlResult += `
-    <tr>
-      <td>${fechaTexto}</td>
-      <td>${t.mecanicos?.nombre || 'Sin asignar'}</td>
+    const acciones = estado === 'pendiente' ?
+      `<button class="btn-pagado" onclick="cambiarEstadoTrabajo(${t.id})">Marcar Pagado</button>
+       <button class="btn-editar" onclick="prepararEdicionTrabajo(${t.id}, '${escapeJsonStr(t.orden_trabajo)}', '${escapeJsonStr(t.repuestos_cambiados)}', ${t.costo_trabajo}, ${t.mecanico_id}, '${escapeJsonStr(t.hora_ingreso)}')">Editar</button>` : '';
+
+    html += `
+    <tr class="fila-orden" ondblclick="verDetalleOrden(${t.id})">
+      <td>${fechaObj ? fechaObj.toLocaleDateString() + ' ' + fechaObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
+      <td>${t.hora_ingreso || '-'}</td>
+      <td>${t.mecanico_nombre || 'Sin asignar'}</td>
       <td>${t.orden_trabajo}</td>
       <td>${formatearRepuestosHistorial(t.repuestos_cambiados)}</td>
       <td>Bs ${parseFloat(t.costo_repuesto || 0).toFixed(2)}</td>
@@ -254,16 +279,15 @@ async function cargarTablaTrabajos() {
       <td><b>Bs ${parseFloat(t.total || 0).toFixed(2)}</b></td>
       <td class="${claseEstado}">${estado.toUpperCase()}</td>
       <td>
-        <div class="row" style="gap:5px;">
-          <button class="${claseBoton}" data-estado="${estado}" onclick="cambiarEstadoTrabajo(${t.id})">${textoBoton}</button>
-          ${botonEditar}
+        <div class="row" style="gap:5px;" ondblclick="event.stopPropagation()">
+          ${acciones}
         </div>
       </td>
     </tr>
     `;
   });
 
-  return htmlResult;
+  return html;
 }
 
 function escapeJsonStr(str) {
@@ -271,13 +295,21 @@ function escapeJsonStr(str) {
   return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
-function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoId) {
+function prepararEdicionTrabajo(id, orden, repuestosStr, costoTrabajo, mecanicoId, horaIngreso) {
   idTrabajoEdicion = id;
   window.scrollTo({top: 0, behavior: 'smooth'});
   
   document.getElementById('mecanico').value = mecanicoId;
-  document.getElementById('orden').value = orden;
+  const sepOrden = orden.indexOf(' | ');
+  if(sepOrden !== -1) {
+    document.getElementById('placaCliente').value = orden.slice(0, sepOrden);
+    document.getElementById('detalleOrden').value = orden.slice(sepOrden + 3);
+  } else {
+    document.getElementById('placaCliente').value = '';
+    document.getElementById('detalleOrden').value = orden;
+  }
   document.getElementById('costo_trab').value = costoTrabajo;
+  document.getElementById('horaIngreso').value = (horaIngreso && horaIngreso !== 'null') ? horaIngreso : '';
   
   const contenedor = document.getElementById('contenedorRepuestos');
   contenedor.innerHTML = '';
@@ -309,8 +341,10 @@ function cancelarEdicion() {
   btnGuardar.style.background = '#2196F3';
   document.getElementById('btnCancelarEdicion').style.display = 'none';
   
-  document.getElementById('orden').value = '';
+  document.getElementById('placaCliente').value = '';
+  document.getElementById('detalleOrden').value = '';
   document.getElementById('costo_trab').value = '';
+  document.getElementById('horaIngreso').value = new Date().toTimeString().slice(0,5);
   document.getElementById('contenedorRepuestos').innerHTML = '';
   agregarFilaRepuesto();
   calcularTotalRepuestos();
@@ -333,31 +367,13 @@ function mostrarLogin() {
 }
 
 async function iniciarSesion() {
-  const uInput = document.getElementById('usuario')
-  const pInput = document.getElementById('password')
-  const msg = document.getElementById('mensajeLogin')
-
-  if(!uInput || !pInput) return;
-
-  const u = uInput.value.trim()
-  const p = pInput.value.trim()
-
-  if(!u || !p) {
-    msg.innerText = '⚠️ Ingrese usuario y contraseña'
-    return
-  }
-
-  msg.innerText = 'Cargando...'
-  msg.style.color = '#2196F3'
-
-  const esValido = await verificarUsuario(u, p)
-
-  if(esValido) {
-    usuarioLogueado = u
+  const u = document.getElementById('usuario').value.trim()
+  const p = document.getElementById('password').value.trim()
+  if(await verificarUsuario(u, p)) {
+    usuarioLogueado = u;
     mostrarApp()
   } else {
-    msg.style.color = 'red'
-    msg.innerText = '❌ Usuario o contraseña incorrectos'
+    document.getElementById('mensajeLogin').innerText = '❌ Usuario o contraseña incorrectos'
   }
 }
 
@@ -370,10 +386,8 @@ function mostrarApp() {
       <p style="color: grey">¿Qué hacemos hoy?</p>
       <button onclick="mostrarTrabajos()" style="width: 300px">📄 Órdenes de Trabajo</button>
       <button onclick="mostrarReportes()" style="width: 300px">📊 Reportes</button>
-      
-      ${esAdmin ? `<button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>` : ''}
+      <button onclick="mostrarMecanicos()" style="width: 300px">🔧 Mecánicos</button>
       ${esAdmin ? `<button onclick="mostrarRegistroAdmin()" style="width: 300px; background: #4caf50">👤 Registrar Usuarios</button>` : ''}
-      
       <button onclick="mostrarLogin()" style="width: 300px; background: #d32f2f">Cerrar sesión</button>
     </div>
   `
@@ -404,7 +418,7 @@ async function ejecutarRegistroAdmin() {
     document.getElementById('new_usuario').value = ''
     document.getElementById('new_password').value = ''
   } else {
-    msg.innerText = '❌ El usuario ya existe o hubo un error'; msg.style.color = 'red'
+    msg.innerText = '❌ El usuario ya existe'; msg.style.color = 'red'
   }
 }
 
@@ -420,13 +434,11 @@ async function mostrarMecanicos() {
       <button onclick="guardarMecanico()">Guardar Mecánico</button>
       <hr>
       <h3>Mecánicos registrados</h3>
-      <div class="tabla-contenedor">
-        <table>
-          <tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Especialidad</th></tr>
-          <tbody id="tablaMecanicos"></tbody>
-        </table>
-      </div>
-      <button onclick="mostrarApp()" style="margin-top:15px;">← Volver al menú</button>
+      <table>
+        <tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Especialidad</th></tr>
+        <tbody id="tablaMecanicos"></tbody>
+      </table>
+      <button onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
   const mecanicos = await obtenerMecanicos()
@@ -470,10 +482,19 @@ async function mostrarTrabajos() {
       <select id="mecanico" style="width: 300px; display: block; margin: 5px auto;">
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
+
+      <div class="row" style="justify-content: center; align-items: center; gap: 8px; margin-top: 5px;">
+        <label for="horaIngreso" style="font-size:13px; color: grey;">Hora de ingreso al trabajo:</label>
+        <input type="time" id="horaIngreso" style="width: 130px;">
+      </div>
       
       <div class="row" style="align-items: flex-start;">
-        <textarea id="orden" placeholder="Orden de Trabajo N° / Detalle" style="width: 300px; height: 130px; resize: none;"></textarea>
-        
+        <div class="col" style="gap: 5px; align-items: flex-start;">
+          <input id="placaCliente" placeholder="Placa de la moto / Nombre del cliente" style="width: 300px;">
+          <input id="detalleOrden" list="listaDetalles" placeholder="Detalle del trabajo (elige o escribe uno nuevo)" style="width: 300px;" autocomplete="off">
+          <datalist id="listaDetalles"></datalist>
+        </div>
+
         <div class="col" style="gap: 5px; align-items: flex-start;">
           <span style="font-size:12px; color: grey;">Repuestos Cambiados y Precios:</span>
           <div id="contenedorRepuestos" class="repuestos-grid">
@@ -496,17 +517,24 @@ async function mostrarTrabajos() {
       </div>
       
       <hr>
-      <h3>Historial de Órdenes</h3>
-      <div class="tabla-contenedor">
+      <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <h3 style="margin: 5px;">Historial de Órdenes</h3>
+        <input id="buscadorHistorial" placeholder="🔍 Buscar por placa, cliente, moto o trabajo..." style="width: 300px; margin: 5px;" oninput="buscarEnHistorial()">
+      </div>
+      <div class="tabla-wrap">
         <table>
-          <tr><th>Fecha</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
+          <thead>
+            <tr><th>Fecha</th><th>Hora Ingreso</th><th>Mecánico</th><th>Orden</th><th>Repuestos</th><th>Costo Rep</th><th>Costo Trab</th><th>Total</th><th>Estado</th><th>Acción</th></tr>
+          </thead>
           <tbody id="tablaTrabajos"></tbody>
         </table>
       </div>
-      <button onclick="mostrarApp()" style="margin-top:15px;">← Volver al menú</button>
+      <button class="btn-volver-fijo" onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
   document.getElementById('tablaTrabajos').innerHTML = await cargarTablaTrabajos()
+  await llenarDatalistDetalles()
+  document.getElementById('horaIngreso').value = new Date().toTimeString().slice(0,5)
 }
 
 function agregarFilaRepuesto(detalle = '', precio = '') {
@@ -564,7 +592,9 @@ function obtenerStringRepuestos() {
 
 async function guardarTrabajo() {
   const mec = document.getElementById('mecanico').value
-  const orden = document.getElementById('orden').value.trim()
+  const placa = document.getElementById('placaCliente').value.trim()
+  const detalle = document.getElementById('detalleOrden').value.trim()
+  const horaIngreso = document.getElementById('horaIngreso').value
   const costoTrabRaw = document.getElementById('costo_trab').value.trim()
 
   if(!costoTrabRaw || parseFloat(costoTrabRaw) <= 0) {
@@ -573,49 +603,65 @@ async function guardarTrabajo() {
     return
   }
 
-  if(!mec ||!orden) return mostrarAviso('Selecciona mecánico y llena el número/detalle de orden')
+  if(!mec ||!placa ||!detalle) return mostrarAviso('Selecciona mecánico y llena la placa/cliente y el detalle de la orden')
+
+  const orden = `${placa} | ${detalle}`
 
   const repuestosString = obtenerStringRepuestos();
   const costoRep = document.getElementById('costo_rep').value;
 
   if (idTrabajoEdicion) {
-    const exito = await actualizarTrabajoExistente(idTrabajoEdicion, mec, orden, repuestosString, costoRep, costoTrabRaw);
+    const exito = await actualizarTrabajoExistente(idTrabajoEdicion, mec, orden, repuestosString, costoRep, costoTrabRaw, horaIngreso);
     if(exito) {
+      await guardarDetalleComunSiNuevo(detalle);
       mostrarAviso(`Orden ${orden} actualizada con éxito ✅`);
       mostrarTrabajos();
     } else {
       mostrarAviso('Error al actualizar la orden ❌');
     }
   } else {
-    await insertarTrabajo(mec, orden, repuestosString, costoRep, costoTrabRaw);
+    await insertarTrabajo(mec, orden, repuestosString, costoRep, costoTrabRaw, horaIngreso);
+    await guardarDetalleComunSiNuevo(detalle);
     mostrarAviso(`Orden ${orden} guardada ✅`);
     mostrarTrabajos();
   }
 }
 
-async function reporteGanancias(tipo, mecanico_id = null) {
-  const trabajos = await obtenerTrabajos(tipo, mecanico_id)
+async function reporteGanancias(tipo, mecanico_id = null, rango = null) {
+  const trabajos = await obtenerTrabajos(tipo, mecanico_id, rango, true)
   const hoy = new Date()
   let fecha_texto = 'Todos'
   if(tipo === 'dia') fecha_texto = hoy.toLocaleDateString()
   if(tipo === 'semana') fecha_texto = `${new Date(hoy.getTime() - 7*24*60*60*1000).toLocaleDateString()} al ${hoy.toLocaleDateString()}`
-  if(tipo === 'mes') fecha_texto = hoy.toLocaleDateString('es', {month: 'long', year: 'numeric'})
+  if(tipo === 'rango' && rango) fecha_texto = `${formatearFechaCorta(rango.desde)} al ${formatearFechaCorta(rango.hasta)}`
 
   const agrupado = {}
   trabajos.forEach(t => {
-    const nombre = t.mecanicos?.nombre || 'Sin asignar'
+    const nombre = t.mecanico_nombre || 'Sin asignar'
     if(!agrupado[nombre]) agrupado[nombre] = {trabajos: [], ganancia: 0}
     agrupado[nombre].trabajos.push({
       orden: t.orden_trabajo,
       repuestos: t.repuestos_cambiados,
       fecha: new Date(t.created_at).toLocaleDateString(),
+      fechaPago: t.fecha_pago ? new Date(t.fecha_pago).toLocaleDateString() : '-',
       ganancia: parseFloat(t.costo_trabajo || 0),
+      costoTrabajo: parseFloat(t.costo_trabajo || 0),
       estado: t.estado
     })
     agrupado[nombre].ganancia += parseFloat(t.costo_trabajo || 0)
   })
 
   return [Object.keys(agrupado).map(nombre => [nombre, agrupado[nombre].trabajos, agrupado[nombre].ganancia]), fecha_texto]
+}
+
+function formatearFechaCorta(iso) {
+  if(!iso) return ''
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function etiquetaTipoReporte(tipo) {
+  return {dia: 'Hoy', semana: 'Última semana', rango: 'Rango de fechas'}[tipo] || tipo
 }
 
 function parseRepuestos(repuestosStr) {
@@ -640,108 +686,328 @@ function parseRepuestos(repuestosStr) {
   return {items, total}
 }
 
-async function generarPDF() {
-  const {jsPDF} = window.jspdf
-  const doc = new jsPDF()
+function verDetalleOrden(id) {
+  const t = trabajosCache.find(tr => String(tr.id) === String(id))
+  if(!t) return
 
-  const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png'
-  const logoBase64 = await urlToBase64(logoUrl)
-  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25)
+  const sep = (t.orden_trabajo || '').indexOf(' | ')
+  const placa = sep !== -1 ? t.orden_trabajo.slice(0, sep) : '-'
+  const detalle = sep !== -1 ? t.orden_trabajo.slice(sep + 3) : t.orden_trabajo
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.text('TALLER DE MOTOS - MORA', 20, 20)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26)
-  doc.setFontSize(11)
-  doc.text(`Período: ${tipoReporteActual} - ${fechaTextoActual}`, 20, 34)
-  doc.text(`Mecánico: ${mecanicoNombreActual}`, 20, 39)
-  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44)
+  const {items, total: totalRepuestos} = parseRepuestos(t.repuestos_cambiados)
+  const filasRepuestos = items.length === 0
+    ? '<tr><td colspan="2" style="text-align:center; color:#aaa;">Sin repuestos registrados</td></tr>'
+    : items.map(it => `<tr><td>${it.detalle}</td><td>Bs ${it.precio.toFixed(2)}</td></tr>`).join('')
 
-  const colX = [20, 55, 115, 150, 170]
-  const colWidth = [35, 60, 35, 20, 25]
-  let y = 58
+  const estado = t.estado || 'pendiente'
+  const claseEstado = estado === 'pagado' ? 'estado-pagado' : 'estado-pendiente'
+  const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'
 
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.rect(20, y-5, 170, 12)
-  doc.text('Mecánico', colX[0], y)
-  doc.text('Orden/Detalle', colX[1], y)
-  doc.text('Repuestos', colX[2], y)
-  doc.text('Monto', colX[3], y)
-  doc.text('Ganancia', colX[4], y)
-  doc.line(colX[0], y+3, colX[4]+colWidth[4], y+3)
-  y += 12
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  let totalGeneral = 0
-
-  datosReporteActuales.forEach(d => {
-    const nombre = d[0]
-    const trabajos = d[1]
-    const ganancia = d[2]
-
-    if(y > 270) {doc.addPage(); y = 20}
-    doc.rect(20, y-5, 170, 7)
-    doc.setFont('helvetica', 'bold')
-    doc.text(nombre, colX[0], y)
-    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y)
-    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[4], y)
-    doc.setFont('helvetica', 'normal')
-    y += 7
-
-    trabajos.forEach(t => {
-      if(y > 270) {doc.addPage(); y = 20}
-      const estado = t.estado === 'pagado'? '[PAGADO]' : '[PENDIENTE]'
-
-      const detalleText = `- Ord ${t.orden} ${estado}`
-      const detalleLines = doc.splitTextToSize(detalleText, colWidth[1]-2)
-
-      const {items, total} = parseRepuestos(t.repuestos)
-
-      let repuestosLines = []
-      if (items.length === 0) {
-        repuestosLines = ['S/R']
-      } else {
-        items.forEach((item, index) => {
-          repuestosLines.push(`${index + 1}. ${item.detalle} | Bs ${item.precio.toFixed(2)}`)
-        })
-        repuestosLines.push('---')
-        repuestosLines.push(`TOTAL: Bs ${total.toFixed(2)}`)
-      }
-
-      const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1)
-      const currentRowHeight = linesCount * 6 + 4
-
-      doc.rect(20, y-5, 170, currentRowHeight)
-      doc.line(colX[0], y-5, colX[0], y-5+currentRowHeight)
-      doc.line(colX[1], y-5, colX[1], y-5+currentRowHeight)
-      doc.line(colX[2], y-5, colX[2], y-5+currentRowHeight)
-      doc.line(colX[3], y-5, colX[3], y-5+currentRowHeight)
-
-      doc.text(detalleLines, colX[1], y)
-      doc.text(repuestosLines, colX[2], y+2)
-      doc.text(`Bs ${t.ganancia.toFixed(2)}`, colX[3], y)
-
-      y += currentRowHeight
-    })
-    totalGeneral += ganancia
-    y += 3
-  })
-
-  doc.rect(20, y-5, 170, 12)
-  doc.line(20, y+3, 190, y+3)
-  y += 8
-  doc.setFontSize(14)
-  doc.setFont('helvetica', 'bold')
-  doc.text('TOTAL MANO DE OBRA:', colX[0], y)
-  doc.text(`Bs ${totalGeneral.toFixed(2)}`, colX[4], y)
-
-  doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`)
+  document.getElementById('modalDetalleContenido').innerHTML = `
+    <button class="modal-cerrar" onclick="cerrarDetalleOrden()">✕ Cerrar</button>
+    <h3 style="text-align:left; margin-top: 5px;">Detalle de la Orden</h3>
+    <p><strong>Placa / Cliente:</strong> ${placa}</p>
+    <p><strong>Trabajo realizado:</strong> ${detalle}</p>
+    <p><strong>Mecánico:</strong> ${t.mecanico_nombre || 'Sin asignar'}</p>
+    <p><strong>Fecha de registro:</strong> ${fecha} &nbsp;|&nbsp; <strong>Hora de ingreso:</strong> ${t.hora_ingreso || '-'}</p>
+    <p><strong>Estado:</strong> <span class="${claseEstado}">${estado.toUpperCase()}</span></p>
+    <table>
+      <thead><tr><th>Repuesto</th><th>Costo</th></tr></thead>
+      <tbody>
+        ${filasRepuestos}
+        <tr><td style="text-align:right;"><strong>Total Repuestos:</strong></td><td><strong>Bs ${totalRepuestos.toFixed(2)}</strong></td></tr>
+        <tr><td style="text-align:right;"><strong>Costo Mano de Obra:</strong></td><td><strong>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</strong></td></tr>
+        <tr><td style="text-align:right;"><strong>TOTAL GENERAL:</strong></td><td><strong>Bs ${parseFloat(t.total || 0).toFixed(2)}</strong></td></tr>
+      </tbody>
+    </table>
+    <div class="row" style="justify-content:center; gap:10px; margin-top:15px;">
+      <button onclick="generarPDFOrden(${t.id})">📄 Descargar PDF</button>
+      <button onclick="imprimirDetalleOrden(${t.id})" style="background:#555;">🖨️ Imprimir</button>
+    </div>
+  `
+  document.getElementById('modalDetalleOrden').classList.add('activo')
 }
 
+function cerrarDetalleOrden(event) {
+  if(event && event.target !== event.currentTarget) return
+  document.getElementById('modalDetalleOrden').classList.remove('activo')
+}
+
+async function generarPDFOrden(id) {
+  const t = trabajosCache.find(tr => String(tr.id) === String(id))
+  if(!t) return
+
+  const sep = (t.orden_trabajo || '').indexOf(' | ')
+  const placa = sep !== -1 ? t.orden_trabajo.slice(0, sep) : '-'
+  const detalle = sep !== -1 ? t.orden_trabajo.slice(sep + 3) : t.orden_trabajo
+  const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'
+  const estado = t.estado || 'pendiente'
+  const { items, total: totalRepuestos } = parseRepuestos(t.repuestos_cambiados)
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png';
+  const logoBase64 = await urlToBase64(logoUrl);
+  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('TALLER DE MOTOS - MORA', 20, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26);
+  doc.setFontSize(11);
+  doc.text(`Orden N°: ${t.id}`, 20, 36);
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 42);
+
+  let y = 55;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Datos de la Orden', 20, y);
+  y += 8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Placa / Cliente: ${placa}`, 20, y); y += 6;
+
+  const detalleLines = doc.splitTextToSize(`Trabajo realizado: ${detalle}`, 170);
+  doc.text(detalleLines, 20, y);
+  y += detalleLines.length * 6 + 1;
+
+  doc.text(`Mecánico: ${t.mecanico_nombre || 'Sin asignar'}`, 20, y); y += 6;
+  doc.text(`Fecha de registro: ${fecha}`, 20, y); y += 6;
+  doc.text(`Hora de ingreso: ${t.hora_ingreso || '-'}`, 20, y); y += 6;
+  doc.text(`Estado: ${estado.toUpperCase()}`, 20, y); y += 10;
+
+  doc.setFont('helvetica', 'bold');
+  doc.rect(20, y - 5, 170, 8);
+  doc.text('Repuesto', 25, y);
+  doc.text('Costo', 160, y);
+  y += 8;
+  doc.setFont('helvetica', 'normal');
+
+  if(items.length === 0) {
+    doc.rect(20, y - 5, 170, 8);
+    doc.text('Sin repuestos registrados', 25, y);
+    y += 8;
+  } else {
+    items.forEach(it => {
+      if (y > 265) { doc.addPage(); y = 20; }
+      const lines = doc.splitTextToSize(it.detalle, 120);
+      const rowH = lines.length * 6 + 2;
+      doc.rect(20, y - 5, 170, rowH);
+      doc.text(lines, 25, y);
+      doc.text(`Bs ${it.precio.toFixed(2)}`, 160, y);
+      y += rowH;
+    });
+  }
+
+  if (y > 255) { doc.addPage(); y = 20; }
+  y += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('Total Repuestos:', 20, y);
+  doc.text(`Bs ${totalRepuestos.toFixed(2)}`, 160, y);
+  y += 7;
+  doc.text('Costo Mano de Obra:', 20, y);
+  doc.text(`Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}`, 160, y);
+  y += 7;
+  doc.line(20, y - 5, 190, y - 5);
+  doc.text('TOTAL GENERAL:', 20, y);
+  doc.text(`Bs ${parseFloat(t.total || 0).toFixed(2)}`, 160, y);
+
+  doc.save(`orden_${t.id}_${Date.now()}.pdf`);
+}
+
+function imprimirDetalleOrden(id) {
+  const t = trabajosCache.find(tr => String(tr.id) === String(id))
+  if(!t) return
+
+  const sep = (t.orden_trabajo || '').indexOf(' | ')
+  const placa = sep !== -1 ? t.orden_trabajo.slice(0, sep) : '-'
+  const detalle = sep !== -1 ? t.orden_trabajo.slice(sep + 3) : t.orden_trabajo
+  const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString() + ' ' + new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'
+  const estado = t.estado || 'pendiente'
+  const { items, total: totalRepuestos } = parseRepuestos(t.repuestos_cambiados)
+
+  const filasRepuestos = items.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;">Sin repuestos registrados</td></tr>'
+    : items.map(it => `<tr><td>${it.detalle}</td><td>Bs ${it.precio.toFixed(2)}</td></tr>`).join('')
+
+  const ventana = window.open('', '_blank')
+  ventana.document.write(`
+    <html>
+    <head>
+      <title>Orden ${t.id} - Taller MORA</title>
+      <style>
+        body { font-family: Arial, sans-serif; color: #111; padding: 30px; }
+        h1 { color: #2196F3; margin-bottom: 0; }
+        p.sub { color: #555; margin-top: 2px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #999; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f0f0f0; }
+        .totales td { border: none; padding: 4px 8px; }
+      </style>
+    </head>
+    <body>
+      <h1>TALLER DE MOTOS - MORA</h1>
+      <p class="sub">Plataforma creada y diseñada por ADROW-CONSULTORES-SRL</p>
+      <hr>
+      <p><strong>Orden N°:</strong> ${t.id}</p>
+      <p><strong>Placa / Cliente:</strong> ${placa}</p>
+      <p><strong>Trabajo realizado:</strong> ${detalle}</p>
+      <p><strong>Mecánico:</strong> ${t.mecanico_nombre || 'Sin asignar'}</p>
+      <p><strong>Fecha de registro:</strong> ${fecha} &nbsp;|&nbsp; <strong>Hora de ingreso:</strong> ${t.hora_ingreso || '-'}</p>
+      <p><strong>Estado:</strong> ${estado.toUpperCase()}</p>
+      <table>
+        <thead><tr><th>Repuesto</th><th>Costo</th></tr></thead>
+        <tbody>${filasRepuestos}</tbody>
+      </table>
+      <table class="totales" style="margin-top: 10px;">
+        <tr><td style="text-align:right; width: 80%;"><strong>Total Repuestos:</strong></td><td>Bs ${totalRepuestos.toFixed(2)}</td></tr>
+        <tr><td style="text-align:right;"><strong>Costo Mano de Obra:</strong></td><td>Bs ${parseFloat(t.costo_trabajo || 0).toFixed(2)}</td></tr>
+        <tr><td style="text-align:right; border-top: 2px solid #333;"><strong>TOTAL GENERAL:</strong></td><td style="border-top: 2px solid #333;"><strong>Bs ${parseFloat(t.total || 0).toFixed(2)}</strong></td></tr>
+      </table>
+    </body>
+    </html>
+  `)
+  ventana.document.close()
+  ventana.focus()
+  setTimeout(() => { ventana.print() }, 300)
+}
+
+function generarHTMLReporteDetallado(datos, totalRepuestos, mostrarMecanico) {
+    let indexGlobal = 1;
+    const filas = datos.map(d => {
+        const nombre = d[0];
+        return d[1].map(t => {
+            const { total } = parseRepuestos(t.repuestos);
+            return `
+                <tr>
+                    <td>${indexGlobal++}</td>
+                    ${mostrarMecanico ? `<td>${nombre}</td>` : ''}
+                    <td>${t.orden}</td>
+                    <td>Bs ${parseFloat(t.costoTrabajo || 0).toFixed(2)}</td>
+                    <td>${t.fechaPago || '-'}</td>
+                    <td>${t.repuestos !== 'S/R' ? t.repuestos.replace(/\n/g, '<br>') : '-'}</td>
+                    <td>Bs ${total.toFixed(2)}</td>
+                </tr>`;
+        }).join('');
+    }).join('');
+
+    const colspanTotal = mostrarMecanico ? 6 : 5;
+
+    return `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; color: #fff;">
+            <thead>
+                <tr style="background: #2196F3;">
+                    <th>N°</th>${mostrarMecanico ? '<th>Mecánico</th>' : ''}<th>Orden</th><th>Costo Trab.</th><th>Fecha Pago</th><th>Repuestos</th><th>Costo Rep.</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filas}
+                <tr><td colspan="${colspanTotal}" style="text-align:right"><strong>Total Repuestos:</strong></td><td><strong>Bs ${totalRepuestos.toFixed(2)}</strong></td></tr>
+            </tbody>
+        </table>`;
+}
+
+async function generarPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const logoUrl = 'https://hzxhvvxjfedqvtlnogmj.supabase.co/storage/v1/object/public/logo/LogoOficialTallerMora1.png';
+  const logoBase64 = await urlToBase64(logoUrl);
+  doc.addImage(logoBase64, 'PNG', 150, 10, 40, 25);
+
+  let y = 58;
+  const colX = [15, 38, 85, 110, 132, 172];
+  const colWidth = [23, 47, 25, 22, 40, 23];
+  
+  let totalManoObra = 0;
+  let totalGeneralRepuestos = 0;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('TALLER DE MOTOS - MORA', 20, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Plataforma creada y diseñada por ADROW-CONSULTORES-SRL', 20, 26);
+  doc.setFontSize(11);
+  doc.text(`Período: ${etiquetaTipoReporte(tipoReporteActual)} - ${fechaTextoActual || ''}`, 20, 34);
+  doc.text(`Mecánico: ${mecanicoNombreActual || 'Todos'}`, 20, 39);
+  doc.text(`Fecha emisión: ${new Date().toLocaleString()}`, 20, 44);
+
+  doc.setFont('helvetica', 'bold');
+  doc.rect(15, y - 5, 180, 12);
+  doc.text('Mecánico', colX[0], y);
+  doc.text('Orden/Detalle', colX[1], y);
+  doc.text('Costo Trab.', colX[2], y);
+  doc.text('Fecha Pago', colX[3], y);
+  doc.text('Repuestos', colX[4], y);
+  doc.text('Costo Rep.', colX[5], y);
+  y += 12;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  datosReporteActuales.forEach(d => {
+    const nombre = d[0];
+    const trabajos = d[1];
+    const ganancia = d[2];
+
+    if (y > 270) { doc.addPage(); y = 20; }
+    doc.rect(15, y - 5, 180, 7);
+    doc.setFont('helvetica', 'bold');
+    doc.text(nombre, colX[0], y);
+    doc.text(`Total: ${trabajos.length} trabajos`, colX[1], y);
+    doc.text(`Bs ${ganancia.toFixed(2)}`, colX[2], y);
+    doc.setFont('helvetica', 'normal');
+    y += 7;
+
+    trabajos.forEach(t => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      
+      const { items, total } = parseRepuestos(t.repuestos);
+      totalGeneralRepuestos += total;
+
+      const estado = t.estado === 'pagado' ? '[PAG]' : '[PEN]';
+      const detalleText = `${t.orden} ${estado}`;
+      const detalleLines = doc.splitTextToSize(detalleText, colWidth[1] - 2);
+
+      let repuestosLines = items.length === 0 ? ['S/R'] : items.map((item, i) => `${i + 1}. ${item.detalle}`);
+      const linesCount = Math.max(detalleLines.length, repuestosLines.length, 1);
+      const currentRowHeight = linesCount * 5 + 4;
+
+      doc.rect(15, y - 5, 180, currentRowHeight);
+      doc.text(detalleLines, colX[1], y);
+      doc.text(`Bs ${parseFloat(t.costoTrabajo || 0).toFixed(2)}`, colX[2], y);
+      doc.text(t.fechaPago || '-', colX[3], y);
+      doc.text(repuestosLines, colX[4], y);
+      doc.text(`Bs ${total.toFixed(2)}`, colX[5], y);
+
+      y += currentRowHeight;
+    });
+    totalManoObra += ganancia;
+    y += 3;
+  });
+
+  y += 5;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL MANO DE OBRA:', 20, y);
+  doc.text(`Bs ${totalManoObra.toFixed(2)}`, 160, y);
+  y += 7;
+  doc.text('TOTAL REPUESTOS:', 20, y);
+  doc.text(`Bs ${totalGeneralRepuestos.toFixed(2)}`, 160, y);
+  y += 7;
+  doc.line(20, y - 5, 190, y - 5);
+  doc.text('TOTAL GENERAL:', 20, y);
+  doc.text(`Bs ${(totalManoObra + totalGeneralRepuestos).toFixed(2)}`, 160, y);
+
+  doc.save(`reporte_${tipoReporteActual}_${Date.now()}.pdf`);
+}
+  
 function urlToBase64(url) {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -758,36 +1024,51 @@ function urlToBase64(url) {
   })
 }
 
-async function cargarReporte(tipo) {
-  tipoReporteActual = tipo
-  const select = document.getElementById('filtroMec')
-  const mecId = select?.value
-  mecanicoNombreActual = mecId === 'todos'? 'Todos' : select.options[select.selectedIndex].text
+async function cargarReporte(tipo, rango = null) {
+    tipoReporteActual = tipo;
+    rangoActual = tipo === 'rango' ? rango : null;
 
-  const [datos, fechaTexto] = await reporteGanancias(tipo, mecId === 'todos'? null : mecId)
-  datosReporteActuales = datos
-  fechaTextoActual = fechaTexto
+    const select = document.getElementById('filtroMec');
+    const mecId = select?.value;
+    const mostrarMecanico = !mecId || mecId === 'todos';
+    mecanicoNombreActual = mostrarMecanico ? 'Todos' : (mecanicosCache.find(m => String(m.id) === String(mecId))?.nombre || 'Todos');
 
-  document.getElementById('fechaLabel').innerText = `Período: ${fechaTexto}`
-  const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0)
-  document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`
+    const [datos, fechaTexto] = await reporteGanancias(tipo, mostrarMecanico ? null : mecId, rango);
 
-  const tbody = document.getElementById('tablaReporte')
-  tbody.innerHTML = datos.length > 0? datos.map(d => {
-    const nombre = d[0]
-    const trabajos = d[1]
-    const ganancia = d[2]
-    const detalleTrabajos = trabajos.map(t => {
-      const estado = t.estado === 'pagado'? '🟢' : '🟠'
-      const repuestosFormateados = t.repuestos && t.repuestos !== 'S/R' ? 
-        `<br><small>Repuestos:</small>${formatearRepuestosHistorial(t.repuestos)}` : ' - Sin repuestos';
-      return `<div style="text-align:left; font-size:12px; margin-bottom:5px;">${estado} Ord ${t.orden}: Bs ${t.ganancia.toFixed(2)} ${repuestosFormateados}</div>`
-    }).join('')
-    const fechas = [...new Set(trabajos.map(t => t.fecha))].join(', ')
-    return `<tr><td style="font-weight:bold; color:#2196F3;">${nombre}</td><td>${trabajos.length}<br>${detalleTrabajos}</td><td>Bs ${ganancia.toFixed(2)}<br><span style="font-size:11px; color:grey">${fechas}</span></td></tr>`
-  }).join('') : '<tr><td colspan="3">Sin datos en este período</td></tr>'
+    datosReporteActuales = datos;
+    fechaTextoActual = fechaTexto;
+
+    document.getElementById('fechaLabel').innerText = `Período: ${etiquetaTipoReporte(tipo)} — ${fechaTexto}`;
+    const total = datos.reduce((sum, d) => sum + (d[2] || 0), 0);
+    document.getElementById('totalGeneral').innerText = `Ganancia Mano de Obra: Bs ${total.toFixed(2)}`;
+
+    let totalRepuestosGlobal = 0;
+    datos.forEach(d => {
+        d[1].forEach(t => {
+            totalRepuestosGlobal += parseRepuestos(t.repuestos).total;
+        });
+    });
+
+    document.getElementById('contenedorReporte').innerHTML = datos.length > 0
+        ? generarHTMLReporteDetallado(datos, totalRepuestosGlobal, mostrarMecanico)
+        : '<p style="text-align:center; color: grey; padding: 15px;">Sin órdenes pagadas para este período</p>';
 }
 
+function aplicarRangoReporte() {
+    const desde = document.getElementById('fechaDesde').value
+    const hasta = document.getElementById('fechaHasta').value
+    if(!desde || !hasta) return mostrarAviso('Selecciona ambas fechas')
+
+    const d1 = new Date(desde + 'T00:00:00')
+    const d2 = new Date(hasta + 'T00:00:00')
+    if(d1 > d2) return mostrarAviso('La fecha "Desde" no puede ser mayor que "Hasta"')
+
+    const diffDias = Math.round((d2 - d1) / (1000*60*60*24)) + 1
+    if(diffDias > 45) return mostrarAviso('El intervalo no puede superar 45 días')
+
+    cargarReporte('rango', {desde, hasta})
+}
+  
 async function mostrarReportes() {
   mecanicosCache = await obtenerMecanicos()
   document.getElementById('app').innerHTML = `
@@ -795,27 +1076,34 @@ async function mostrarReportes() {
       <h2 style="font-size: 30px; margin-bottom: 0;">Control Taller MORA</h2>
       <p class="autor-tag">diseñado y creado por ADROW-CONSULTORES-SRL</p>
       <h3>Reportes de Ganancias</h3>
-      <p style="color: grey">Detalle de trabajos por período - 🟢 Pagado / 🟠 Pendiente</p>
-      <select id="filtroMec" onchange="cargarReporte(tipoReporteActual)" style="width: 300px">
+      <p style="color: grey">Solo se muestran órdenes con estado PAGADO</p>
+      <select id="filtroMec" onchange="cargarReporte(tipoReporteActual, rangoActual)" style="width: 300px">
         <option value="todos">Todos</option>
         ${mecanicosCache.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')}
       </select>
       <div class="row">
         <button onclick="cargarReporte('dia')">Hoy</button>
         <button onclick="cargarReporte('semana')">Semana</button>
-        <button onclick="cargarReporte('mes')">Mes</button>
       </div>
+      <div class="row" style="justify-content:center; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px;">
+        <label style="font-size:12px; color:grey;">Desde
+          <input type="date" id="fechaDesde" style="margin-left:4px;">
+        </label>
+        <label style="font-size:12px; color:grey;">Hasta
+          <input type="date" id="fechaHasta" style="margin-left:4px;">
+        </label>
+        <button onclick="aplicarRangoReporte()">📅 Buscar por rango</button>
+      </div>
+      <p style="font-size:11px; color:grey; margin-top:4px;">Puedes elegir fechas anteriores. Intervalo máximo: 45 días.</p>
       <p id="fechaLabel">Período: </p>
       <p id="totalGeneral" style="font-size: 20px; font-weight: bold; color: #4caf50">Ganancia Mano de Obra: Bs 0.00</p>
-      <button onclick="generarPDF()">📄 Exportar PDF</button>
       <hr>
-      <div class="tabla-contenedor">
-        <table>
-          <tr><th>Mecánico</th><th>Trabajos Detallados</th><th>Ganancia Mano de Obra + Fechas</th></tr>
-          <tbody id="tablaReporte"></tbody>
-        </table>
+      <h4 style="text-align:left; color: grey; margin-bottom: 5px;">Vista previa del reporte</h4>
+      <div class="tabla-wrap" id="contenedorReporte"></div>
+      <div class="row" style="justify-content:center; margin-top:15px;">
+        <button onclick="generarPDF()">📄 Exportar PDF</button>
       </div>
-      <button onclick="mostrarApp()" style="margin-top:15px;">← Volver al menú</button>
+      <button onclick="mostrarApp()">← Volver al menú</button>
     </div>
   `
   setTimeout(() => cargarReporte('dia'), 100)
